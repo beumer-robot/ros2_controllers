@@ -25,6 +25,14 @@ ROS2 Distro | Branch | Build status | Documentation | Released packages
    Uses repos file: `src/$NAME$/$NAME$.repos`
 
 
+### Installation notes:
+dep:
+``` bash
+sudo apt install ros-humble-kinematics-interface
+sudo apt install ros-humble-kinematics-interface-kdl
+```
+
+
 ## Acknowledgements
 
 <!--
