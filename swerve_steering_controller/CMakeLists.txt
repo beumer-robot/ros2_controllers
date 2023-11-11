@@ -8,19 +8,40 @@ endif()
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-    roscpp
-    controller_interface
-    control_msgs
-    geometry_msgs
-    hardware_interface
-    nav_msgs
-    pluginlib
-    realtime_tools
-    tf
-    urdf
+# find_package(catkin REQUIRED COMPONENTS
+#     roscpp
+#     controller_interface
+#     control_msgs
+#     geometry_msgs
+#     hardware_interface
+#     nav_msgs
+#     pluginlib
+#     realtime_tools
+#     tf
+#     urdf
+# )
+# find_package(Boost REQUIRED)
+
+set(THIS_PACKAGE_INCLUDE_DEPENDS
+  rclcpp
+  controller_interface
+  control_msgs
+  geometry_msgs
+  hardware_interface
+  nav_msgs
+  pluginlib
+  realtime_tools
+  tf
+  urdf
 )
+
+find_package(ament_cmake REQUIRED)
+find_package(backward_ros REQUIRED)
 find_package(Boost REQUIRED)
+foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
+  find_package(${Dependency} REQUIRED)
+endforeach()
+
 
 catkin_package(
   INCLUDE_DIRS include
