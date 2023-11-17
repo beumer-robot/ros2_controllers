@@ -727,7 +727,7 @@ void SwerveSteeringController::setOdomPubFields()
     static_cast<double>(twist_cov_list[5])};
 
   tf_odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<tf::tfMessage>(get_node(), "/tf", 100));
+    new realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>(get_node(), "/tf", 100));
   tf_odom_publisher_->msg_.transforms.resize(1);
   tf_odom_publisher_->msg_.transforms[0].transform.translation.z = 0.0;
   tf_odom_publisher_->msg_.transforms[0].child_frame_id = base_frame_id_;
@@ -740,11 +740,11 @@ void SwerveSteeringController::publishWheelData(
 {
   if (publish_wheel_joint_controller_state_ && controller_state_pub_->trylock())
   {
-    const double cmd_dt(period.toSec());
+    const double cmd_dt(period.seconds());
 
     // Compute desired wheels velocities, that is before applying limits:
     controller_state_pub_->msg_.header.stamp = time;
-    const double control_duration = (time - time_previous_).toSec();
+    const double control_duration = (time - time_previous_).seconds();
 
     for (size_t i = 0; i < wheel_joints_size_; ++i)
     {
