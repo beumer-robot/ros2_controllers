@@ -71,7 +71,7 @@ CallbackReturn SwerveSteeringController::on_configure(const rclcpp_lifecycle::St
 // bool SwerveSteeringController::init(
 //   hardware_interface::RobotHW * robot_hw, rclcpp::NodeHandle & root_nh,
 //   rclcpp::NodeHandle & controller_nh)
-bool SwerveSteeringController::on_init()
+CallbackReturn SwerveSteeringController::on_init()
 {
   const std::string complete_ns = get_node().getNamespace();
   std::size_t id = complete_ns.find_last_of("/");
@@ -227,13 +227,13 @@ bool SwerveSteeringController::on_init()
 
   // cmd_subscriber_ =
   //   get_node().subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
-  cmd_subscriber = get_node()->create_subscription<geometry_msgs::msg::Twist>(
+  cmd_subscriber_ = get_node()->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
 
   return true;
 }
 
-void SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::Duration & period)
+controller_interface::return_type SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   std::vector<double> wheels_omega, holders_theta;
   std::vector<int> directions;
@@ -343,6 +343,8 @@ void SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::D
   publishWheelData(time, period, desired_velocities, desired_positions);
 
   time_previous_ = time;
+
+  return controller_interface::return_type::OK;
 }
 
 CallbackReturn SwerveSteeringController::on_activate(const rclcpp::Time & time)
@@ -683,8 +685,9 @@ bool SwerveSteeringController::getXmlStringList(
 
 void SwerveSteeringController::setOdomPubFields()
 {
-  avg_intersection_publisher_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(
-    get_node(), "avg_intersection", 100));  // to show the avg intersection
+  auto avg_intersection_publisher_standard = get_node()->create_publisher<geometry_msgs::msg::Point>(
+    "avg_intersection", 100);
+  avg_intersection_publisher_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(avg_intersection_publisher_standard));  // to show the avg intersection
 
   // Get and check params for covariances
   XmlRpc::XmlRpcValue pose_cov_list;
@@ -702,8 +705,9 @@ void SwerveSteeringController::setOdomPubFields()
     ROS_ASSERT(twist_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
 
   // Setup odometry realtime publisher + odom message constant fields
+  auto odom_publisher_standard = get_node()->create_publisher<nav_msgs::msg::Odometry>("odom", 100);
   odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>(get_node(), "odom", 100));
+    new realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>(odom_publisher_standard));
   odom_publisher_->msg_.header.frame_id = odom_frame_id_;
   odom_publisher_->msg_.child_frame_id = base_frame_id_;
   odom_publisher_->msg_.pose.pose.position.z = 0;
@@ -726,8 +730,9 @@ void SwerveSteeringController::setOdomPubFields()
     static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
     static_cast<double>(twist_cov_list[5])};
 
+  auto tf_odom_publisher_standard = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", 100);
   tf_odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>(get_node(), "/tf", 100));
+    new realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>(tf_odom_publisher_standard));
   tf_odom_publisher_->msg_.transforms.resize(1);
   tf_odom_publisher_->msg_.transforms[0].transform.translation.z = 0.0;
   tf_odom_publisher_->msg_.transforms[0].child_frame_id = base_frame_id_;

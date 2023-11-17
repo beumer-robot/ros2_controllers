@@ -89,7 +89,9 @@ public:
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
 
   SWERVE_STEERING_CONTROLLER_PUBLIC
-  controller_interface::return_type update() override;
+  controller_interface::return_type update(
+    const rclcpp::Time & time, const rclcpp::Duration & period
+  ) override;
 
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_init() override;
@@ -132,9 +134,6 @@ private:
   // // parameters from ROS for the swerve_steering_controller
   // std::shared_ptr<ParamListener> param_listener_;
   // Params params_;
-
-  // Odometry
-  Odometry odometry_;
 
   // OLD
 
@@ -182,7 +181,7 @@ private:
   std::vector<hardware_interface::JointHandle> holders_joints_handles_;
 
   utils::command cmd_;
-  rclcpp::Subscriber cmd_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_subscriber_;
   realtime_tools::RealtimeBuffer<utils::command> commands_buffer_;
 
   std::shared_ptr<realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState> >
