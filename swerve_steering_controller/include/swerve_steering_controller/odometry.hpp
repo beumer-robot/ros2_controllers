@@ -47,7 +47,7 @@
 #include <boost/function.hpp>
 #include <rclcpp/time.hpp>
 
-#include <swerve_steering_controller/utils.h>
+#include <swerve_steering_controller/utils.hpp>
 
 namespace swerve_steering_controller
 {

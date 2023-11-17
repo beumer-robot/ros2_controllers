@@ -52,8 +52,8 @@ SwerveSteeringController::SwerveSteeringController()
 }
 
 bool SwerveSteeringController::init(
-  hardware_interface::RobotHW * robot_hw, ros::NodeHandle & root_nh,
-  ros::NodeHandle & controller_nh)
+  hardware_interface::RobotHW * robot_hw, rclcpp::NodeHandle & root_nh,
+  rclcpp::NodeHandle & controller_nh)
 {
   const std::string complete_ns = controller_nh.getNamespace();
   std::size_t id = complete_ns.find_last_of("/");
@@ -133,7 +133,7 @@ bool SwerveSteeringController::init(
   if (publish_wheel_joint_controller_state_)
   {
     controller_state_pub_.reset(
-      new realtime_tools::RealtimePublisher<control_msgs::JointTrajectoryControllerState>(
+      new realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>(
         controller_nh, "wheel_joint_controller_state", 100));
 
     const size_t num_joints = wheel_joints_size_ * 2;  // for the steering joint and the wheel joint
@@ -206,8 +206,10 @@ bool SwerveSteeringController::init(
   controller_nh.param("intersection_tolerance", intersection_tol_, 0.1);
   RCLCPP_INFO_STREAM_NAMED(name_, "intersection tolerance set to " << intersection_tol_);
 
-  cmd_subscriber_ =
-    controller_nh.subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
+  // cmd_subscriber_ =
+  //   controller_nh.subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
+  cmd_subscriber = controller_nh->create_subscription<geometry_msgs::msg::Twist>(
+    "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
 
   return true;
 }
@@ -239,7 +241,7 @@ void SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::D
     last_state_publish_time_ += publish_period_;
 
     // Compute and store orientation info
-    const geometry_msgs::Quaternion orientation(
+    const geometry_msgs::msg::Quaternion orientation(
       tf::createQuaternionMsgFromYaw(odometry_.getHeading()));
 
     // Populate odom message and publish
@@ -258,7 +260,7 @@ void SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::D
     // Publish tf /odom frame
     if (enable_odom_tf_ && tf_odom_publisher_->trylock())
     {
-      geometry_msgs::TransformStamped & odom_frame = tf_odom_publisher_->msg_.transforms[0];
+      geometry_msgs::msg::TransformStamped & odom_frame = tf_odom_publisher_->msg_.transforms[0];
       odom_frame.header.stamp = time;
       odom_frame.transform.translation.x = odometry_.getX();
       odom_frame.transform.translation.y = odometry_.getY();
@@ -346,7 +348,7 @@ void SwerveSteeringController::set_to_initial_state()
   }
 }
 
-void SwerveSteeringController::cmd_callback(const geometry_msgs::Twist & command)
+void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & command)
 {
   if (isRunning())
   {
@@ -376,7 +378,7 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::Twist & command
 }
 
 bool SwerveSteeringController::getWheelParams(
-  ros::NodeHandle & controller_nh, const std::string & wheel_param,
+  rclcpp::NodeHandle & controller_nh, const std::string & wheel_param,
   const std::string & holder_param, std::vector<std::string> & wheel_names,
   std::vector<std::string> & holder_names)
 {
@@ -607,7 +609,7 @@ bool SwerveSteeringController::getWheelParams(
 }
 
 bool SwerveSteeringController::getXmlStringList(
-  ros::NodeHandle & node_handler, const std::string & list_param,
+  rclcpp::NodeHandle & node_handler, const std::string & list_param,
   std::vector<std::string> & returned_names)
 {
   XmlRpc::XmlRpcValue xml_list;
@@ -656,9 +658,9 @@ bool SwerveSteeringController::getXmlStringList(
 }
 
 void SwerveSteeringController::setOdomPubFields(
-  ros::NodeHandle & root_nh, rclcpp::NodeHandle & controller_nh)
+  rclcpp::NodeHandle & root_nh, rclcpp::NodeHandle & controller_nh)
 {
-  avg_intersection_publisher_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::Point>(
+  avg_intersection_publisher_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(
     controller_nh, "avg_intersection", 100));  // to show the avg intersection
 
   // Get and check params for covariances
@@ -678,7 +680,7 @@ void SwerveSteeringController::setOdomPubFields(
 
   // Setup odometry realtime publisher + odom message constant fields
   odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<nav_msgs::Odometry>(controller_nh, "odom", 100));
+    new realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>(controller_nh, "odom", 100));
   odom_publisher_->msg_.header.frame_id = odom_frame_id_;
   odom_publisher_->msg_.child_frame_id = base_frame_id_;
   odom_publisher_->msg_.pose.pose.position.z = 0;

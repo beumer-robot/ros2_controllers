@@ -36,37 +36,45 @@
  * Author: Mark Naeem
  */
 
-#pragma once
-
-#include <swerve_steering_controller/utils.h>
+#include <swerve_steering_controller/interval.hpp>
+#include <swerve_steering_controller/utils.hpp>
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <iostream>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
-class interval
+class wheel
 {
-  std::vector<std::array<double, 2>> limits_;
-  std::vector<std::array<int, 2>> types_;
-  std::unordered_map<std::string, std::array<int, 2>> types_dict_ = {
-    {"open", std::array<int, 2>({0, 0})},
-    {"closeopen", std::array<int, 2>({1, 0})},
-    {"openclose", std::array<int, 2>({0, 1})},
-    {"close", std::array<int, 2>({1, 1})}};
-
-  std::vector<utils::limits_types_intervals> limits_types_intervals_vector_;
-
-  bool intersect(
-    std::array<double, 2> & limits1, const std::array<double, 2> & limits2,
-    std::array<int, 2> & type1, const std::array<int, 2> & type2);
+  double theta_ = 0;
+  double command_omega_ = 0;
+  double steering_angle_ = 0;
+  int omega_direc_ = 1;
+  bool limitless_ = false;
+  interval limits_;
 
 public:
-  interval(const std::array<double, 2> & limits, const std::string & type);
-  bool is_intersecting(const interval & another_interval);
-  interval complement() const;
-  double len() const;
-  void print() const;
+  wheel(
+    const double radius = 0.0, const std::array<double, 2> & position = {0.0, 0.0},
+    bool limitless = false, const std::array<double, 2> & rotation_limits = {-M_PI_2, M_PI_2});
+
+  void set_rotation_limits(
+    const std::array<double, 2> & rotation_limits = {-M_PI_2, M_PI_2}, bool limitless = false);
+
+  void set_current_angle(const double & angle);
+  double get_current_angle() const;
+
+  bool set_command_angle(const double & target);
+  double get_command_angle() const;
+
+  void set_command_velocity(const double & velocity);
+  double get_command_velocity() const;
+
+  void set_position(const std::array<double, 2> & position);
+
+  void set_limitless(const bool limitless);
+  bool get_limitless() const;
+
+  int get_omega_direction() const;
+  // for the controller use only. THis class won't use them by itself
+  double offset;
+  double radius;
+  std::array<double, 2> position;
 };
