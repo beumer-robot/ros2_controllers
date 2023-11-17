@@ -112,23 +112,23 @@ install(TARGETS ${PROJECT_NAME}
 ## Testing ##
 #############
 
-if(CATKIN_ENABLE_TESTING)
-  find_package(controller_manager REQUIRED)
-  find_package(geometry_msgs REQUIRED)
-  find_package(std_msgs REQUIRED)
-  find_package(std_srvs REQUIRED)
-  find_package(rosgraph_msgs REQUIRED)
-  find_package(rostest REQUIRED)
+# if(CATKIN_ENABLE_TESTING)
+#   find_package(controller_manager REQUIRED)
+#   find_package(geometry_msgs REQUIRED)
+#   find_package(std_msgs REQUIRED)
+#   find_package(std_srvs REQUIRED)
+#   find_package(rosgraph_msgs REQUIRED)
+#   find_package(rostest REQUIRED)
 
-  include_directories(
-    ${controller_manager_INCLUDE_DIRS}
-    ${geometry_msgs_INCLUDE_DIRS}
-    ${std_msgs_INCLUDE_DIRS}
-    ${std_srvs_INCLUDE_DIRS}
-    ${rosgraph_msgs_INCLUDE_DIRS}
-  )
+#   include_directories(
+#     ${controller_manager_INCLUDE_DIRS}
+#     ${geometry_msgs_INCLUDE_DIRS}
+#     ${std_msgs_INCLUDE_DIRS}
+#     ${std_srvs_INCLUDE_DIRS}
+#     ${rosgraph_msgs_INCLUDE_DIRS}
+#   )
 
-endif()
+# endif()
 
 
 ## Add gtest based cpp test target and link libraries
