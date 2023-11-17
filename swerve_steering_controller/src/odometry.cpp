@@ -42,6 +42,8 @@
 
 namespace swerve_steering_controller
 {
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("swerve_steering_controller.odometry");
+
 namespace bacc = boost::accumulators;
 
 Odometry::Odometry(size_t velocity_rolling_window_size)
@@ -141,7 +143,7 @@ bool Odometry::update(
 
   if (inf_all)
   {
-    // ROS_INFO_STREAM("inf_all");
+    // RCLCPP_INFO_STREAM(LOGGER, "inf_all");
     angular = 0;
     for (int i = 0; i < wheels_num_; ++i)
     {
@@ -162,14 +164,14 @@ bool Odometry::update(
          fabs(intersections[i][1] - intersections[i - 1][1]) > intersection_tol_) &&
         i != 0)
       {
-        ROS_ERROR_STREAM("intersections are not close enough to get an average, dropping!");
+        RCLCPP_ERROR_STREAM(LOGGER, "intersections are not close enough to get an average, dropping!");
         for (size_t i = 0; i < wheels_num_; ++i)
         {
-          ROS_WARN_STREAM("theta, omega: " << holders_theta[i] << " " << wheels_omega[i]);
+          RCLCPP_WARN_STREAM(LOGGER, "theta, omega: " << holders_theta[i] << " " << wheels_omega[i]);
         }
         for (size_t i = 0; i < intersections.size(); ++i)
         {
-          ROS_WARN_STREAM(
+          RCLCPP_WARN_STREAM(LOGGER,
             "intersection i:" << i << " , " << intersections[i][0] << "  " << intersections[i][1]);
         }
         return false;
@@ -180,7 +182,7 @@ bool Odometry::update(
         average_intersection[1] += intersections[i][1] / intersections.size();
       }
     }
-    // ROS_INFO_STREAM("average intersection: "<<average_intersection[0]<<"
+    // RCLCPP_INFO_STREAM(LOGGER, "average intersection: "<<average_intersection[0]<<"
     // "<<average_intersection[1]);
     intersection_point->at(0) =
       average_intersection[0];  // just to visualize it on rqt_plot through the publisher
@@ -198,69 +200,69 @@ bool Odometry::update(
       auto icr_wh = std::array<double, 2>{
         wheels_positions_[i][0] - average_intersection[0],
         wheels_positions_[i][1] - average_intersection[1]};
-      if (isinf(icr_wh[0]) || isinf(icr_wh[1])) ROS_WARN_STREAM("icr_wh is inf");
+      if (std::isinf(icr_wh[0]) || std::isinf(icr_wh[1])) RCLCPP_WARN_STREAM(LOGGER, "icr_wh is inf");
       if (utils::isclose(icr_wh[0], 0) || utils::isclose(icr_wh[1], 0))
-        ROS_WARN_STREAM("icr_wh for wheel " << i << " is zero. icr is just over it!");
+        RCLCPP_WARN_STREAM(LOGGER, "icr_wh for wheel " << i << " is zero. icr is just over it!");
 
       angular += (wheels_omega[i] * wheels_radii_[i] * sin(holders_theta[i])) / (2 * icr_wh[0]) -
                  (wheels_omega[i] * wheels_radii_[i] * cos(holders_theta[i])) / (2 * icr_wh[1]);
-      // if (isinf(angular)) ROS_WARN_STREAM("angular is the problem");
+      // if (std::isinf(angular)) RCLCPP_WARN_STREAM(LOGGER, "angular is the problem");
     }
     angular /= wheels_num_;
     linear_x_vh = average_intersection[1] * angular;
     linear_y_vh = -1 * average_intersection[0] * angular;
   }
 
-  if (isnan(linear_x_vh) || isnan(linear_y_vh) || isnan(angular))
+  if (std::isnan(linear_x_vh) || std::isnan(linear_y_vh) || std::isnan(angular))
   {
-    ROS_ERROR_STREAM("estimated vx,vy or wz is nan");
+    RCLCPP_ERROR_STREAM(LOGGER, "estimated vx,vy or wz is nan");
     for (const auto & it : holders_theta)
     {
-      ROS_INFO_STREAM("theta " << it);
+      RCLCPP_INFO_STREAM(LOGGER, "theta " << it);
     }
     for (const auto & it : wheels_omega)
     {
-      ROS_INFO_STREAM("omega " << it);
+      RCLCPP_INFO_STREAM(LOGGER, "omega " << it);
     }
     for (const auto & it : intersections)
     {
-      ROS_INFO_STREAM("intersection " << it[0] << " " << it[1]);
+      RCLCPP_INFO_STREAM(LOGGER, "intersection " << it[0] << " " << it[1]);
     }
-    ROS_INFO_STREAM(
+    RCLCPP_INFO_STREAM(LOGGER,
       "average intersection: " << average_intersection[0] << " " << average_intersection[1]);
-    ROS_INFO_STREAM(
+    RCLCPP_INFO_STREAM(LOGGER,
       "linearx " << linear_x_vh << " linearly " << linear_y_vh << " angular " << angular);
     return false;
   }
-  if (isinf(linear_x_vh) || isinf(linear_y_vh) || isinf(angular))
+  if (std::isinf(linear_x_vh) || std::isinf(linear_y_vh) || std::isinf(angular))
   {
-    ROS_ERROR_STREAM("estimated vx,vy or wz is inf");
+    RCLCPP_ERROR_STREAM(LOGGER, "estimated vx,vy or wz is inf");
     for (const auto & it : holders_theta)
     {
-      ROS_INFO_STREAM("theta " << it);
+      RCLCPP_INFO_STREAM(LOGGER, "theta " << it);
     }
     for (const auto & it : wheels_omega)
     {
-      ROS_INFO_STREAM("omega " << it);
+      RCLCPP_INFO_STREAM(LOGGER, "omega " << it);
     }
     for (const auto & it : intersections)
     {
-      ROS_INFO_STREAM("intersection " << it[0] << " " << it[1]);
+      RCLCPP_INFO_STREAM(LOGGER, "intersection " << it[0] << " " << it[1]);
     }
-    ROS_INFO_STREAM(
+    RCLCPP_INFO_STREAM(LOGGER,
       "average intersection: " << average_intersection[0] << " " << average_intersection[1]);
-    ROS_INFO_STREAM(
+    RCLCPP_INFO_STREAM(LOGGER,
       "linearx " << linear_x_vh << " linearly " << linear_y_vh << " angular " << angular);
     return false;
   }
 
-  // ROS_INFO_STREAM("linearx "<<linear_x_vh<<" linearly "<<linear_y_vh<<" angular "<<angular);
+  // RCLCPP_INFO_STREAM(LOGGER, "linearx "<<linear_x_vh<<" linearly "<<linear_y_vh<<" angular "<<angular);
 
   linear_x = linear_x_vh * cos(heading_) - linear_y_vh * sin(heading_);
   linear_y = linear_x_vh * sin(heading_) + linear_y_vh * cos(heading_);
 
   /// We cannot estimate the speed with very small time intervals:
-  const double dt = (time - timestamp_).toSec();
+  const double dt = (time - timestamp_).seconds();
   if (dt < 0.0001) return false;  // Interval too small to integrate with
 
   timestamp_ = time;
@@ -277,7 +279,7 @@ bool Odometry::update(
   linear_y_ = bacc::rolling_mean(linear_acc_y_);
   angular_ = bacc::rolling_mean(angular_acc_);
 
-  // ROS_INFO_STREAM(std::endl);
+  // RCLCPP_INFO_STREAM(std::endl);
   return true;
 }
 

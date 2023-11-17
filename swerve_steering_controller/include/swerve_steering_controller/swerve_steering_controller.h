@@ -38,18 +38,21 @@
 
 #pragma once
 
-#include <controller_interface/multi_interface_controller.h>
+#include <controller_interface/controller_interface.hpp>
 
-#include <control_msgs/JointTrajectoryControllerState.h>
-#include <geometry_msgs/Point.h>
-#include <geometry_msgs/Twist.h>
-#include <hardware_interface/joint_command_interface.h>
+#include <control_msgs/msg/joint_trajectory_controller_state.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include "hardware_interface/handle.hpp"
+// #include <hardware_interface/joint_command_interface.h>
+// #include <hardware_interface/loans.hpp>  // ROS 2 uses a different approach for hardware interfaces
 #include <realtime_tools/realtime_buffer.h>
 #include <realtime_tools/realtime_publisher.h>
 
-#include <nav_msgs/Odometry.h>
-#include <tf/tf.h>
-#include <tf/tfMessage.h>
+#include <nav_msgs/msg/odometry.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+// #include <tf/tf.h>
+#include <tf2_msgs/msg/tf_message.hpp>
 
 #include <cmath>
 #include <vector>
