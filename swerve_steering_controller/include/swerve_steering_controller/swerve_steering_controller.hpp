@@ -67,48 +67,73 @@
 
 namespace swerve_steering_controller
 {
+using CallbackReturn = controller_interface::CallbackReturn;
+using namespace std::chrono_literals;
 class SwerveSteeringController : public controller_interface::ControllerInterface
 {
 public:
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   SwerveSteeringController();
 
-  controller_interface::return_type init(
-    const std::string & controller_name,
-    rclcpp::Node::SharedPtr & root_node,
-    rclcpp::Node::SharedPtr & controller_node
-  ) override;
+  // controller_interface::return_type init(
+  //   const std::string & controller_name,
+  //   rclcpp::Node::SharedPtr & root_node,
+  //   rclcpp::Node::SharedPtr & controller_node
+  // ) override;
 
-  controller_interface::return_type update() override;
-
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   controller_interface::InterfaceConfiguration command_interface_configuration() const override;
+
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_configure(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_STEERING_CONTROLLER_PUBLIC
+  controller_interface::return_type update() override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_activate(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_STEERING_CONTROLLER_PUBLIC
+  CallbackReturn on_init() override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_activate(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_error(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_STEERING_CONTROLLER__VISIBILITY_PUBLIC
-  on_shutdown(const rclcpp_lifecycle::State & previous_state) override;
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
+
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_error(const rclcpp_lifecycle::State & previous_state) override;
+
+  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  CallbackReturn on_shutdown(const rclcpp_lifecycle::State & previous_state) override;
 
 
 private:
+  // NEW
   // Handle structure for the swerve module interfaces
   struct SwerveModuleHandle
   {
     std::reference_wrapper<const hardware_interface::LoanedStateInterface> state;
     std::reference_wrapper<hardware_interface::LoanedCommandInterface> command;
   };
+
+  std::vector<SwerveModuleHandle> front_left_wheel_handles;
+  std::vector<SwerveModuleHandle> front_right_wheel_handles;
+  std::vector<SwerveModuleHandle> rear_left_wheel_handles;
+  std::vector<SwerveModuleHandle> rear_right_wheel_handles;
+
+  // parameters from ROS for the swerve_steering_controller
+  std::shared_ptr<ParamListener> param_listener_;
+  Params params_;
+
+  // Odometry
+  Odometry odometry_;
+
+  // OLD
 
   std::string name_;
 
@@ -118,10 +143,10 @@ private:
   rclcpp::Duration publish_period_;
   rclcpp::Time last_state_publish_time_;
 
-  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry> > odom_publisher_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage> > tf_odom_publisher_;
-  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Point> >
-    avg_intersection_publisher_;
+  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odom_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage>> tf_odom_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>>
+    avg_intersection_publisher_ = nullptr;
 
   Odometry odometry_;
 

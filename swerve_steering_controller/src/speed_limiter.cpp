@@ -38,7 +38,7 @@
 
 #include <algorithm>
 
-#include <swerve_steering_controller/speed_limiter.h>
+#include <swerve_steering_controller/speed_limiter.hpp>
 
 template <typename T>
 T clamp(T x, T min, T max)

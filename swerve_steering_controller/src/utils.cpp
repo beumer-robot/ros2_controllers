@@ -36,7 +36,7 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/utils.h>
+#include <swerve_steering_controller/utils.hpp>
 
 void utils::limits_types_intervals::limits_types_intervals::sort(
   std::vector<utils::limits_types_intervals> & limits_types_intervals_vector)

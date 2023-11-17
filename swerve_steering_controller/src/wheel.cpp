@@ -36,7 +36,7 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/wheel.h>
+#include <swerve_steering_controller/wheel.hpp>
 
 wheel::wheel(
   const double radius, const std::array<double, 2> & position, bool limitless,

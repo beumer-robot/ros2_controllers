@@ -36,7 +36,7 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/swerve_steering_controller.h>
+#include <swerve_steering_controller/swerve_steering_controller.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
 namespace swerve_steering_controller

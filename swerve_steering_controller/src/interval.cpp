@@ -36,7 +36,7 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/interval.h>
+#include <swerve_steering_controller/interval.hpp>
 
 interval::interval(const std::array<double, 2> & limits, const std::string & type)
 {

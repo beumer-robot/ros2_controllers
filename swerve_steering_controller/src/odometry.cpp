@@ -36,7 +36,7 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/odometry.h>
+#include <swerve_steering_controller/odometry.hpp>
 
 #include <boost/bind.hpp>
 
