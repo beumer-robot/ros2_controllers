@@ -75,12 +75,12 @@ CallbackReturn SwerveSteeringController::on_init()
 {
   const std::string complete_ns = get_node().getNamespace();
   std::size_t id = complete_ns.find_last_of("/");
-  name_ = complete_ns.substr(id + 1);
+  // name_ = complete_ns.substr(id + 1);
 
   std::vector<std::string> holders_names, wheels_names;
   if (!getWheelParams(get_node(), "wheels", "holders", wheels_names, holders_names))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't import the wheels");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't import the wheels");
     return false;
   }
   std::vector<double> radii;
@@ -191,8 +191,8 @@ CallbackReturn SwerveSteeringController::on_init()
   // Get the joint object to use in the realtime loop
   for (size_t i = 0; i < wheel_joints_size_; ++i)
   {
-    RCLCPP_INFO_STREAM_NAMED(
-      name_, "Adding a wheel with joint name: "
+    RCLCPP_INFO_STREAM_ONCE(
+      LOGGER, "Adding a wheel with joint name: "
                << wheels_names[i] << " and a holder with joint name: " << holders_names[i]);
     wheels_joints_handles_[i] = vel_joint_hw->getHandle(wheels_names[i]);    // throws on failure
     holders_joints_handles_[i] = pos_joint_hw->getHandle(holders_names[i]);  // throws on failure
@@ -201,29 +201,27 @@ CallbackReturn SwerveSteeringController::on_init()
   // Odometry related:
   double publish_rate;
   get_node().param("publish_rate", publish_rate, 50.0);
-  RCLCPP_INFO_STREAM_NAMED(name_, "Controller state will be published at " << publish_rate << "Hz.");
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
   publish_period_ = rclcpp::Duration(1.0 / publish_rate);
 
   int velocity_rolling_window_size = 4;
   get_node().param(
     "velocity_rolling_window_size", velocity_rolling_window_size, velocity_rolling_window_size);
-  RCLCPP_INFO_STREAM_NAMED(
-    name_, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
 
   odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
 
   get_node().param("base_frame_id", base_frame_id_, base_frame_id_);
-  RCLCPP_INFO_STREAM_NAMED(name_, "Base frame_id set to " << base_frame_id_);
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
 
   get_node().param("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
-  RCLCPP_INFO_STREAM_NAMED(
-    name_, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
 
   get_node().param("infinity_tolerance", infinity_tol_, 1000.0);
-  RCLCPP_INFO_STREAM_NAMED(name_, "infinity tolerance set to " << infinity_tol_);
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
 
   get_node().param("intersection_tolerance", intersection_tol_, 0.1);
-  RCLCPP_INFO_STREAM_NAMED(name_, "intersection tolerance set to " << intersection_tol_);
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "intersection tolerance set to " << intersection_tol_);
 
   // cmd_subscriber_ =
   //   get_node().subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
@@ -344,7 +342,7 @@ controller_interface::return_type SwerveSteeringController::update(const rclcpp:
 
   time_previous_ = time;
 
-  return controller_interface::return_type::OK;
+  return controller_interface::return_type::OK; 
 }
 
 CallbackReturn SwerveSteeringController::on_activate(const rclcpp::Time & time)
@@ -383,7 +381,7 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
       !std::isfinite(command.angular.z) || !std::isfinite(command.linear.x) ||
       !std::isfinite(command.linear.y))
     {
-      ROS_WARN_THROTTLE(1.0, "Received NaN in velocity command. Ignoring.");
+      RCLCPP_WARN_THROTTLE(1.0, "Received NaN in velocity command. Ignoring.");
       return;
     }
 
@@ -392,15 +390,15 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
     cmd_.y = command.linear.y;
     cmd_.stamp = rclcpp::Time::now();
     commands_buffer_.writeFromNonRT(cmd_);
-    ROS_DEBUG_STREAM_NAMED(
-      name_, "Added values to command. "
+    RCLCPP_DEBUG_STREAM_ONCE(
+      LOGGER, "Added values to command. "
                << "Ang: " << cmd_.w << ", "
                << "Lin x,y: (" << cmd_.x << " , " << cmd_.y << "), "
                << "Stamp: " << cmd_.stamp);
   }
   else
   {
-    ROS_ERROR_NAMED(name_, "Can't accept new commands. Controller is not running.");
+    RCLCPP_ERROR_ONCE(LOGGER, "Can't accept new commands. Controller is not running.");
   }
 }
 
@@ -424,19 +422,19 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   XmlRpc::XmlRpcValue xml_list;
   if (!get_node().getParam("radii", xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param 'radii'");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'radii'");
     return false;
   }
 
   if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "list param 'radii' is not of type array");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'radii' is not of type array");
     return false;
   }
 
   if (xml_list.size() == 0)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'radii' is an empty list");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'radii' is an empty list");
     return false;
   }
 
@@ -446,7 +444,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'radii' #" << i << " isn't of type double or int");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'radii' #" << i << " isn't of type double or int");
       return false;
     }
     wheels_[i].radius = static_cast<double>(xml_list[i]);
@@ -455,25 +453,24 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   // position
   if (!get_node().getParam("positions", xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param 'position'");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'position'");
     return false;
   }
 
   if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "list param 'position' is not of type array");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'position' is not of type array");
     return false;
   }
   if (xml_list.size() == 0)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'position' is an empty list");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' is an empty list");
     return false;
   }
 
   else if (xml_list.size() != wheel_names.size())
   {
-    RCLCPP_ERROR_STREAM_NAMED(
-      name_, "List param 'position' size is not equal to List param 'wheel' size");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' size is not equal to List param 'wheel' size");
     return false;
   }
 
@@ -481,12 +478,12 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   {
     if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeArray)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'position' #" << i << " isn't of type array");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " isn't of type array");
       return false;
     }
     if (xml_list[i].size() != 2)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'position' #" << i << " size isn't 2");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " size isn't 2");
       return false;
     }
 
@@ -497,8 +494,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
       {
-        RCLCPP_ERROR_STREAM_NAMED(
-          name_, "List param 'position' #" << i << " #" << j << " isn't of type int or double");
+        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " #" << j << " isn't of type int or double");
         return false;
       }
       position[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
@@ -510,19 +506,19 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   // limitless flag
   if (!get_node().getParam("limitless", xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param 'limitless'");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limitless'");
     return false;
   }
 
   if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "list param 'limitless' is not of type array");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'limitless' is not of type array");
     return false;
   }
 
   if (xml_list.size() == 0)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'limitless' is an empty list");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limitless' is an empty list");
     return false;
   }
 
@@ -530,7 +526,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   {
     if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeBoolean)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'limitless' #" << i << " isn't of type bool");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limitless' #" << i << " isn't of type bool");
       return false;
     }
     wheels_[i].set_limitless(static_cast<bool>(xml_list[i]));
@@ -539,25 +535,24 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   // limits
   if (!get_node().getParam("limits", xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param 'limits'");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limits'");
     return false;
   }
 
   if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "list param 'limits' is not of type array");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'limits' is not of type array");
     return false;
   }
   if (xml_list.size() == 0)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'limits' is an empty list");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' is an empty list");
     return false;
   }
 
   else if (xml_list.size() != wheel_names.size())
   {
-    RCLCPP_ERROR_STREAM_NAMED(
-      name_, "List param 'limits' size is not equal to List param 'wheel' size");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' size is not equal to List param 'wheel' size");
     return false;
   }
 
@@ -566,19 +561,19 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
     // if the wheel is limitless, no need to read the limits
     if (wheels_[i].get_limitless())
     {
-      RCLCPP_INFO_STREAM_NAMED(
-        name_, "List param 'limits' #" << i << " skipped because limitless flag is set to true");
+      RCLCPP_INFO_STREAM_ONCE(
+        LOGGER, "List param 'limits' #" << i << " skipped because limitless flag is set to true");
       continue;
     }
 
     if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeArray)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'limits' #" << i << " isn't of type array");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " isn't of type array");
       return false;
     }
     if (xml_list[i].size() != 2)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'limits' #" << i << " size isn't 2");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " size isn't 2");
       return false;
     }
 
@@ -589,8 +584,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
       {
-        RCLCPP_ERROR_STREAM_NAMED(
-          name_, "List param 'limits' #" << i << " #" << j << " isn't of type int or double");
+        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " #" << j << " isn't of type int or double");
         return false;
       }
       limit[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
@@ -602,19 +596,19 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
   // offsets
   if (!get_node().getParam("offsets", xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param 'offsets'");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'offsets'");
     return false;
   }
 
   if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "list param 'offsets' is not of type array");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'offsets' is not of type array");
     return false;
   }
 
   if (xml_list.size() == 0)
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "List param 'offsets' is an empty list");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'offsets' is an empty list");
     return false;
   }
 
@@ -624,8 +618,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
     {
-      RCLCPP_ERROR_STREAM_NAMED(
-        name_, "List param 'offsets' #" << i << " isn't of type int or double ");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'offsets' #" << i << " isn't of type int or double ");
       return false;
     }
     wheels_[i].offset = static_cast<double>(xml_list[i]);
@@ -641,7 +634,7 @@ bool SwerveSteeringController::getXmlStringList(
   XmlRpc::XmlRpcValue xml_list;
   if (!get_node().getParam(list_param, xml_list))
   {
-    RCLCPP_ERROR_STREAM_NAMED(name_, "Couldn't retrieve list param '" << list_param << "'.");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param '" << list_param << "'.");
     return false;
   }
 
@@ -649,7 +642,7 @@ bool SwerveSteeringController::getXmlStringList(
   {
     if (xml_list.size() == 0)
     {
-      RCLCPP_ERROR_STREAM_NAMED(name_, "List param '" << list_param << "' is an empty list");
+      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' is an empty list");
       return false;
     }
 
@@ -657,8 +650,7 @@ bool SwerveSteeringController::getXmlStringList(
     {
       if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeString)
       {
-        RCLCPP_ERROR_STREAM_NAMED(
-          name_, "List param '" << list_param << "' #" << i << " isn't a string.");
+        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' #" << i << " isn't a string.");
         return false;
       }
       else
@@ -675,8 +667,7 @@ bool SwerveSteeringController::getXmlStringList(
 
   else
   {
-    RCLCPP_ERROR_STREAM_NAMED(
-      name_, "List param '" << list_param << "' is neither a list of strings nor a string.");
+    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' is neither a list of strings nor a string.");
     return false;
   }
 

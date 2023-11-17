@@ -68,6 +68,7 @@
 
 namespace swerve_steering_controller
 {
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("swerve_steering_controller.swerve_steering_controller");
 using CallbackReturn = controller_interface::CallbackReturn;
 using namespace std::chrono_literals;
 class SwerveSteeringController : public controller_interface::ControllerInterface
@@ -90,8 +91,7 @@ public:
 
   SWERVE_STEERING_CONTROLLER_PUBLIC
   controller_interface::return_type update(
-    const rclcpp::Time & time, const rclcpp::Duration & period
-  ) override;
+    const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_init() override;
