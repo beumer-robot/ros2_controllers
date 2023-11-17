@@ -38,8 +38,10 @@
 
 #pragma once
 
-#include <controller_interface/controller_interface.hpp>
+#include <cmath>
+#include <vector>
 
+#include <controller_interface/controller_interface.hpp>
 #include <control_msgs/msg/joint_trajectory_controller_state.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -48,22 +50,21 @@
 #include "rclcpp_lifecycle/state.hpp"
 // #include <hardware_interface/joint_command_interface.h>
 // #include <hardware_interface/loans.hpp>  // ROS 2 uses a different approach for hardware interfaces
+#include "realtime_tools/realtime_box.h"
 #include <realtime_tools/realtime_buffer.h>
 #include <realtime_tools/realtime_publisher.h>
-
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 // #include <tf/tf.h>
 #include <tf2_msgs/msg/tf_message.hpp>
 
-#include <cmath>
-#include <vector>
 
 #include <swerve_steering_controller/odometry.hpp>
 #include <swerve_steering_controller/speed_limiter.hpp>
 #include <swerve_steering_controller/utils.hpp>
 #include <swerve_steering_controller/wheel.hpp>
 #include <swerve_steering_controller/visibility_control.h>
+// #include "swerve_steering_controller_parameters.hpp"
 
 namespace swerve_steering_controller
 {
@@ -93,22 +94,22 @@ public:
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_init() override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_activate(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_error(const rclcpp_lifecycle::State & previous_state) override;
 
-  SWERVE_DRIVE_CONTROLLER_PUBLIC
+  SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State & previous_state) override;
 
 
@@ -121,14 +122,16 @@ private:
     std::reference_wrapper<hardware_interface::LoanedCommandInterface> command;
   };
 
-  std::vector<SwerveModuleHandle> front_left_wheel_handles;
-  std::vector<SwerveModuleHandle> front_right_wheel_handles;
-  std::vector<SwerveModuleHandle> rear_left_wheel_handles;
-  std::vector<SwerveModuleHandle> rear_right_wheel_handles;
+  std::vector<SwerveModuleHandle> swerve_handles_;
 
-  // parameters from ROS for the swerve_steering_controller
-  std::shared_ptr<ParamListener> param_listener_;
-  Params params_;
+  // std::vector<SwerveModuleHandle> front_left_wheel_handles;
+  // std::vector<SwerveModuleHandle> front_right_wheel_handles;
+  // std::vector<SwerveModuleHandle> rear_left_wheel_handles;
+  // std::vector<SwerveModuleHandle> rear_right_wheel_handles;
+
+  // // parameters from ROS for the swerve_steering_controller
+  // std::shared_ptr<ParamListener> param_listener_;
+  // Params params_;
 
   // Odometry
   Odometry odometry_;
@@ -144,7 +147,7 @@ private:
   rclcpp::Time last_state_publish_time_;
 
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odom_publisher_ = nullptr;
-  std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage>> tf_odom_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>> tf_odom_publisher_ = nullptr;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>>
     avg_intersection_publisher_ = nullptr;
 
@@ -188,14 +191,15 @@ private:
   void cmd_callback(const geometry_msgs::msg::Twist & command);
 
   bool getWheelParams(
-    rclcpp::NodeHandle & controller_nh, const std::string & wheel_param,
-    const std::string & holder_param, std::vector<std::string> & wheel_names,
+    const std::string & wheel_param,
+    const std::string & holder_param,
+    std::vector<std::string> & wheel_names,
     std::vector<std::string> & holder_names);
   bool getXmlStringList(
-    rclcpp::NodeHandle & node_handler, const std::string & list_param,
+    const std::string & list_param,
     std::vector<std::string> & returned_names);
 
-  void setOdomPubFields(rclcpp::NodeHandle & root_nh, rclcpp::NodeHandle & controller_nh);
+  void setOdomPubFields();
 
   // Controller state publisher.. includes the whels and the holders
   std::shared_ptr<realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState> >
