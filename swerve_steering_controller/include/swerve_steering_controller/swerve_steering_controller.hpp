@@ -105,12 +105,15 @@ public:
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
 
+  // todo: implement this
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
 
+  // todo: implement this
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_error(const rclcpp_lifecycle::State & previous_state) override;
 
+  // todo: implement this
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State & previous_state) override;
 

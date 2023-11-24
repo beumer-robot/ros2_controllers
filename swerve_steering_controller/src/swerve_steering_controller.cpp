@@ -81,7 +81,7 @@ CallbackReturn SwerveSteeringController::on_init()
   // note: ROS2 change
   auto node = get_node();
 
-  const std::string complete_ns = node.getNamespace();
+  const std::string complete_ns = node->getNamespace();
   std::size_t id = complete_ns.find_last_of("/");
   // name_ = complete_ns.substr(id + 1);
 
@@ -89,7 +89,7 @@ CallbackReturn SwerveSteeringController::on_init()
   if (!getWheelParams("wheels", "holders", wheels_names, holders_names))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't import the wheels");
-    return false;
+    CallbackReturn::ERROR;
   }
   std::vector<double> radii;
   std::vector<std::array<double, 2>> positions;
@@ -475,7 +475,7 @@ bool SwerveSteeringController::getWheelParams(
   // Retrieve the positions
   // std::vector<std::vector<double>> positions;
   // attention: attempting to retrieve as flat and then reconstructing to
-  // std::vector<std::vector<double>>.
+  // std::vector<std::vector<double>>
   std::vector<double> flat_positions_retrieved;
   if (!get_node()->get_parameter("positions", flat_positions_retrieved))
   {
