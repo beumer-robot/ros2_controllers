@@ -53,3 +53,9 @@ More information: <a href="http://rosin-project.eu">rosin-project.eu</a>
 
 This project has received funding from the European Union’s Horizon 2020
 research and innovation programme under grant agreement no. 732287.
+
+## Helpful
+If using pre-commit, during development/migration skip the following by comitting with the SKIP env variable like this:
+```sh
+SKIP=ament_cppcheck,ament_cpplint,ament_copyright git commit -m "commit message"
+```
