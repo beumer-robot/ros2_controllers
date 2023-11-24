@@ -301,7 +301,7 @@ controller_interface::return_type SwerveSteeringController::update(
   utils::command current_cmd = *(commands_buffer_.readFromRT());
 
   // Limit velocities and accelerations:
-  const double cmd_dt(period.toSec());
+  const double cmd_dt(period.seconds());
 
   limiter_lin_x_.limit(current_cmd.x, last0_cmd_.x, last1_cmd_.x, cmd_dt);
   limiter_lin_y_.limit(current_cmd.y, last0_cmd_.y, last1_cmd_.y, cmd_dt);
@@ -392,14 +392,15 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
       !std::isfinite(command.angular.z) || !std::isfinite(command.linear.x) ||
       !std::isfinite(command.linear.y))
     {
-      RCLCPP_WARN_THROTTLE(LOGGER, CLOCK, 1000, "Received NaN in velocity command. Ignoring.");
+      auto clock = get_node()->get_clock();
+      RCLCPP_WARN_THROTTLE(LOGGER, *clock, 1000, "Received NaN in velocity command. Ignoring.");
       return;
     }
 
     cmd_.w = command.angular.z;
     cmd_.x = command.linear.x;
     cmd_.y = command.linear.y;
-    cmd_.stamp = rclcpp::Time::now();
+    cmd_.stamp = get_node()->get_clock()->now();
     commands_buffer_.writeFromNonRT(cmd_);
     RCLCPP_DEBUG_STREAM_ONCE(
       LOGGER, "Added values to command. "
@@ -417,272 +418,264 @@ bool SwerveSteeringController::getWheelParams(
   const std::string & wheel_param, const std::string & holder_param,
   std::vector<std::string> & wheel_names, std::vector<std::string> & holder_names)
 {
+  // // prepare names for the joint handlers
+  // if (!(getXmlStringList(get_node(), wheel_param, wheel_names) &&
+  //       getXmlStringList(get_node(), holder_param, holder_names)))
+  // {
+  //   return false;
+  // }
+  // note: Changed to ROS2 parameter server
   // prepare names for the joint handlers
-  if (!(getXmlStringList(get_node(), wheel_param, wheel_names) &&
-        getXmlStringList(get_node(), holder_param, holder_names)))
+  std::vector<std::string> wheel_names;
+  std::vector<std::string> holder_names;
+
+  if (
+    !get_node()->get_parameter(wheel_param, wheel_names) ||
+    !get_node()->get_parameter(holder_param, holder_names))
   {
+    RCLCPP_ERROR(get_node()->get_logger(), "Failed to retrieve wheel or holder names");
     return false;
   }
+
+  // Further processing with wheel_names and holder_names as needed
 
   /*prepare radii, limits, limitless flag for the wheels classes*/
 
   // initialize wheels vector
   wheels_.resize(wheel_names.size(), wheel());
 
-  // radius
-  XmlRpc::XmlRpcValue xml_list;
-  if (!get_node()->get_parameter("radii", xml_list))
+  // note: Changed to ROS2 parameter server
+  // Retrieve the radii
+  std::vector<double> radii;
+  if (!get_node()->get_parameter("radii", radii))
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'radii'");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'radii'");
     return false;
   }
 
-  if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
+  if (radii.empty())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'radii' is not of type array");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'radii' is an empty list");
     return false;
   }
 
-  if (xml_list.size() == 0)
+  for (size_t i = 0; i < radii.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'radii' is an empty list");
+    wheels_[i].radius = radii[i];
+  }
+
+  // note: Changed to ROS2 parameter server
+  // Retrieve the positions
+  // std::vector<std::vector<double>> positions;
+  // attention: attempting to retrieve as flat and then reconstructing to
+  // std::vector<std::vector<double>>.
+  std::vector<double> flat_positions_retrieved;
+  if (!get_node()->get_parameter("positions", flat_positions_retrieved))
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'positions'");
+    return false;
+  }
+  // attention: reconstruct to std::vector<std::vector<double>>
+  std::vector<std::vector<double>> positions;
+  for (size_t i = 0; i < flat_positions_retrieved.size(); i += 2)
+  {
+    positions.push_back({flat_positions_retrieved[i], flat_positions_retrieved[i + 1]});
+  }
+
+  if (positions.empty())
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'positions' is an empty list");
     return false;
   }
 
-  for (int i = 0; i < xml_list.size(); ++i)
+  if (positions.size() != wheel_names.size())
   {
-    if (
-      xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
-      xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
+    RCLCPP_ERROR_STREAM(
+      get_node()->get_logger(), "Size of 'positions' does not match the number of wheels");
+    return false;
+  }
+
+  for (size_t i = 0; i < positions.size(); ++i)
+  {
+    if (positions[i].size() != 2)
     {
-      RCLCPP_ERROR_STREAM_ONCE(
-        LOGGER, "List param 'radii' #" << i << " isn't of type double or int");
-      return false;
-    }
-    wheels_[i].radius = static_cast<double>(xml_list[i]);
-  }
-
-  // position
-  // if (!get_node().getParam("positions", xml_list))
-  if (!get_node()->get_parameter("positions", xml_list))
-  {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'position'");
-    return false;
-  }
-
-  if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
-  {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'position' is not of type array");
-    return false;
-  }
-  if (xml_list.size() == 0)
-  {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' is an empty list");
-    return false;
-  }
-
-  else if (xml_list.size() != wheel_names.size())
-  {
-    RCLCPP_ERROR_STREAM_ONCE(
-      LOGGER, "List param 'position' size is not equal to List param 'wheel' size");
-    return false;
-  }
-
-  for (int i = 0; i < xml_list.size(); ++i)
-  {
-    if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeArray)
-    {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " isn't of type array");
-      return false;
-    }
-    if (xml_list[i].size() != 2)
-    {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " size isn't 2");
+      RCLCPP_ERROR_STREAM(
+        get_node()->get_logger(), "Position at index " << i << " does not have exactly 2 elements");
       return false;
     }
 
-    std::array<double, 2> position;
-    for (int j = 0; j < 2; ++j)
-    {
-      if (
-        xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
-        xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
-      {
-        RCLCPP_ERROR_STREAM_ONCE(
-          LOGGER, "List param 'position' #" << i << " #" << j << " isn't of type int or double");
-        return false;
-      }
-      position[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
-    }
-
+    std::array<double, 2> position = {positions[i][0], positions[i][1]};
     wheels_[i].set_position(position);
   }
 
-  // limitless flag
-  if (!get_node()->get_parameter("limitless", xml_list))
+  // note: Changed to ROS2 parameter server
+  // Retrieve the limitless flags
+  std::vector<bool> limitless;
+  if (!get_node()->get_parameter("limitless", limitless))
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limitless'");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'limitless'");
     return false;
   }
 
-  if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
+  if (limitless.empty())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'limitless' is not of type array");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'limitless' is an empty list");
     return false;
   }
 
-  if (xml_list.size() == 0)
+  for (size_t i = 0; i < limitless.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limitless' is an empty list");
+    wheels_[i].set_limitless(limitless[i]);
+  }
+
+  // note: Changed to ROS2 parameter server
+  // Retrieve the limits
+  // std::vector<std::vector<double>> limits;
+  // attention: attempting to retrieve as flat and then reconstructing to
+  // std::vector<std::vector<double>>.
+  std::vector<double> flat_limits_retrieved;
+  if (!get_node()->get_parameter("limits", flat_limits_retrieved))
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'limits'");
+    return false;
+  }
+  // attention: reconstruct to std::vector<std::vector<double>>
+  std::vector<std::vector<double>> limits;
+  for (size_t i = 0; i < flat_limits_retrieved.size(); i += 2)
+  {
+    limits.push_back({flat_limits_retrieved[i], flat_limits_retrieved[i + 1]});
+  }
+
+  if (limits.empty())
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'limits' is an empty list");
     return false;
   }
 
-  for (int i = 0; i < xml_list.size(); ++i)
+  if (limits.size() != wheel_names.size())
   {
-    if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeBoolean)
-    {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limitless' #" << i << " isn't of type bool");
-      return false;
-    }
-    wheels_[i].set_limitless(static_cast<bool>(xml_list[i]));
-  }
-
-  // limits
-  if (!get_node()->get_parameter("limits", xml_list))
-  {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limits'");
+    RCLCPP_ERROR_STREAM(
+      get_node()->get_logger(), "Size of 'limits' does not match the number of wheels");
     return false;
   }
 
-  if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
+  for (size_t i = 0; i < limits.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'limits' is not of type array");
-    return false;
-  }
-  if (xml_list.size() == 0)
-  {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' is an empty list");
-    return false;
-  }
-
-  else if (xml_list.size() != wheel_names.size())
-  {
-    RCLCPP_ERROR_STREAM_ONCE(
-      LOGGER, "List param 'limits' size is not equal to List param 'wheel' size");
-    return false;
-  }
-
-  for (int i = 0; i < xml_list.size(); ++i)
-  {
-    // if the wheel is limitless, no need to read the limits
+    // Skip setting limits if the wheel is limitless
     if (wheels_[i].get_limitless())
     {
-      RCLCPP_INFO_STREAM_ONCE(
-        LOGGER, "List param 'limits' #" << i << " skipped because limitless flag is set to true");
+      RCLCPP_INFO_STREAM(
+        get_node()->get_logger(), "Skipping limits for wheel " << i << " as it is limitless");
       continue;
     }
 
-    if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeArray)
+    if (limits[i].size() != 2)
     {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " isn't of type array");
-      return false;
-    }
-    if (xml_list[i].size() != 2)
-    {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " size isn't 2");
+      RCLCPP_ERROR_STREAM(
+        get_node()->get_logger(), "Limit at index " << i << " does not have exactly 2 elements");
       return false;
     }
 
-    std::array<double, 2> limit;
-    for (int j = 0; j < 2; ++j)
-    {
-      if (
-        xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
-        xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
-      {
-        RCLCPP_ERROR_STREAM_ONCE(
-          LOGGER, "List param 'limits' #" << i << " #" << j << " isn't of type int or double");
-        return false;
-      }
-      limit[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
-    }
-
+    std::array<double, 2> limit = {limits[i][0], limits[i][1]};
     wheels_[i].set_rotation_limits(limit);
   }
 
-  // offsets
-  if (!get_node()->get_parameter("offsets", xml_list))
+  // note: Changed to ROS2 parameter server
+  // Retrieve the offsets
+  std::vector<double> offsets;
+  if (!get_node()->get_parameter("offsets", offsets))
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'offsets'");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'offsets'");
     return false;
   }
 
-  if (xml_list.getType() != XmlRpc::XmlRpcValue::TypeArray)
+  if (offsets.empty())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "list param 'offsets' is not of type array");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'offsets' is an empty list");
     return false;
   }
 
-  if (xml_list.size() == 0)
+  for (size_t i = 0; i < offsets.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'offsets' is an empty list");
-    return false;
-  }
-
-  for (int i = 0; i < xml_list.size(); ++i)
-  {
-    if (
-      xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
-      xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
-    {
-      RCLCPP_ERROR_STREAM_ONCE(
-        LOGGER, "List param 'offsets' #" << i << " isn't of type int or double ");
-      return false;
-    }
-    wheels_[i].offset = static_cast<double>(xml_list[i]);
+    wheels_[i].offset = offsets[i];
   }
 
   return true;
 }
 
+// bool SwerveSteeringController::getXmlStringList(
+//   const std::string & list_param, std::vector<std::string> & returned_names)
+// {
+//   XmlRpc::XmlRpcValue xml_list;
+//   if (!get_node()->get_parameter(list_param, xml_list))
+//   {
+//     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param '" << list_param << "'.");
+//     return false;
+//   }
+
+//   if (xml_list.getType() == XmlRpc::XmlRpcValue::TypeArray)
+//   {
+//     if (xml_list.size() == 0)
+//     {
+//       RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' is an empty list");
+//       return false;
+//     }
+
+//     for (int i = 0; i < xml_list.size(); ++i)
+//     {
+//       if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeString)
+//       {
+//         RCLCPP_ERROR_STREAM_ONCE(
+//           LOGGER, "List param '" << list_param << "' #" << i << " isn't a string.");
+//         return false;
+//       }
+//       else
+//       {
+//         returned_names.push_back(static_cast<std::string>(xml_list[i]));
+//       }
+//     }
+//   }
+
+//   else if (xml_list.getType() == XmlRpc::XmlRpcValue::TypeString)
+//   {
+//     returned_names.push_back(xml_list);
+//   }
+
+//   else
+//   {
+//     RCLCPP_ERROR_STREAM_ONCE(
+//       LOGGER, "List param '" << list_param << "' is neither a list of strings nor a string.");
+//     return false;
+//   }
+
+//   return true;
+// }
+
+// attention: attempt to port getXmlStringList to ROS2
+// note: currently no used, but maybe we should go back to using it.
 bool SwerveSteeringController::getXmlStringList(
   const std::string & list_param, std::vector<std::string> & returned_names)
 {
-  XmlRpc::XmlRpcValue xml_list;
-  if (!get_node()->get_parameter(list_param, xml_list))
+  rclcpp::Parameter param;
+  if (!get_node()->get_parameter(list_param, param))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param '" << list_param << "'.");
     return false;
   }
 
-  if (xml_list.getType() == XmlRpc::XmlRpcValue::TypeArray)
+  if (param.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
   {
-    if (xml_list.size() == 0)
+    returned_names = param.as_string_array();
+    if (returned_names.empty())
     {
       RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' is an empty list");
       return false;
     }
-
-    for (int i = 0; i < xml_list.size(); ++i)
-    {
-      if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeString)
-      {
-        RCLCPP_ERROR_STREAM_ONCE(
-          LOGGER, "List param '" << list_param << "' #" << i << " isn't a string.");
-        return false;
-      }
-      else
-      {
-        returned_names.push_back(static_cast<std::string>(xml_list[i]));
-      }
-    }
   }
-
-  else if (xml_list.getType() == XmlRpc::XmlRpcValue::TypeString)
+  else if (param.get_type() == rclcpp::ParameterType::PARAMETER_STRING)
   {
-    returned_names.push_back(xml_list);
+    returned_names.push_back(param.as_string());
   }
-
   else
   {
     RCLCPP_ERROR_STREAM_ONCE(
@@ -701,20 +694,20 @@ void SwerveSteeringController::setOdomPubFields()
     new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(
       avg_intersection_publisher_standard));  // to show the avg intersection
 
-  // Get and check params for covariances
-  XmlRpc::XmlRpcValue pose_cov_list;
-  get_node()->get_parameter("pose_covariance_diagonal", pose_cov_list);
-  BOOST_ASSERT(pose_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  // note: changed to ROS2 parameter server
+  std::vector<double> pose_cov_list;
+  if (!get_node()->get_parameter("pose_covariance_diagonal", pose_cov_list))
+  {
+    RCLCPP_ERROR(LOGGER, "Couldn't retrieve pose_covariance_diagonal parameter");
+  }
   BOOST_ASSERT(pose_cov_list.size() == 6);
-  for (int i = 0; i < pose_cov_list.size(); ++i)
-    BOOST_ASSERT(pose_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
 
-  XmlRpc::XmlRpcValue twist_cov_list;
-  get_node()->get_parameter("twist_covariance_diagonal", twist_cov_list);
-  BOOST_ASSERT(twist_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  BOOST_ASSERT(twist_cov_list.size() == 6);
-  for (int i = 0; i < twist_cov_list.size(); ++i)
-    BOOST_ASSERT(twist_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
+  // note: changed to ROS2 parameter server
+  std::vector<double> twist_cov_list;
+  if (!get_node()->get_parameter("twist_covariance_diagonal", twist_cov_list))
+  {
+    RCLCPP_ERROR(LOGGER, "Couldn't retrieve twist_covariance_diagonal parameter");
+  }
 
   // Setup odometry realtime publisher + odom message constant fields
   auto odom_publisher_standard = get_node()->create_publisher<nav_msgs::msg::Odometry>("odom", 100);
