@@ -431,7 +431,7 @@ bool SwerveSteeringController::getWheelParams(
 
   // radius
   XmlRpc::XmlRpcValue xml_list;
-  if (!get_node().getParam("radii", xml_list))
+  if (!get_node()->get_parameter("radii", xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'radii'");
     return false;
@@ -463,7 +463,8 @@ bool SwerveSteeringController::getWheelParams(
   }
 
   // position
-  if (!get_node().getParam("positions", xml_list))
+  // if (!get_node().getParam("positions", xml_list))
+  if (!get_node()->get_parameter("positions", xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'position'");
     return false;
@@ -518,7 +519,7 @@ bool SwerveSteeringController::getWheelParams(
   }
 
   // limitless flag
-  if (!get_node().getParam("limitless", xml_list))
+  if (!get_node()->get_parameter("limitless", xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limitless'");
     return false;
@@ -547,7 +548,7 @@ bool SwerveSteeringController::getWheelParams(
   }
 
   // limits
-  if (!get_node().getParam("limits", xml_list))
+  if (!get_node()->get_parameter("limits", xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'limits'");
     return false;
@@ -610,7 +611,7 @@ bool SwerveSteeringController::getWheelParams(
   }
 
   // offsets
-  if (!get_node().getParam("offsets", xml_list))
+  if (!get_node()->get_parameter("offsets", xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param 'offsets'");
     return false;
@@ -648,7 +649,7 @@ bool SwerveSteeringController::getXmlStringList(
   const std::string & list_param, std::vector<std::string> & returned_names)
 {
   XmlRpc::XmlRpcValue xml_list;
-  if (!get_node().getParam(list_param, xml_list))
+  if (!get_node()->get_parameter(list_param, xml_list))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't retrieve list param '" << list_param << "'.");
     return false;
@@ -702,14 +703,14 @@ void SwerveSteeringController::setOdomPubFields()
 
   // Get and check params for covariances
   XmlRpc::XmlRpcValue pose_cov_list;
-  get_node().getParam("pose_covariance_diagonal", pose_cov_list);
+  get_node()->get_parameter("pose_covariance_diagonal", pose_cov_list);
   BOOST_ASSERT(pose_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
   BOOST_ASSERT(pose_cov_list.size() == 6);
   for (int i = 0; i < pose_cov_list.size(); ++i)
     BOOST_ASSERT(pose_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
 
   XmlRpc::XmlRpcValue twist_cov_list;
-  get_node().getParam("twist_covariance_diagonal", twist_cov_list);
+  get_node()->get_parameter("twist_covariance_diagonal", twist_cov_list);
   BOOST_ASSERT(twist_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
   BOOST_ASSERT(twist_cov_list.size() == 6);
   for (int i = 0; i < twist_cov_list.size(); ++i)
@@ -722,34 +723,6 @@ void SwerveSteeringController::setOdomPubFields()
   odom_publisher_->msg_.header.frame_id = odom_frame_id_;
   odom_publisher_->msg_.child_frame_id = base_frame_id_;
   odom_publisher_->msg_.pose.pose.position.z = 0;
-  // odom_publisher_->msg_.pose.covariance = {
-  //   static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[5])};
-  // std::initializer_list<double> initList = {
-  //   static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-  //   static_cast<double>(pose_cov_list[5]), 0., 0., 0., 0., 0., 0.};
-  // auto initList = {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-  //                  static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-  //                  static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-  //                  static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-  //                  static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-  //                  static_cast<double>(pose_cov_list[5]), 0., 0., 0., 0., 0., 0.};
-  // std::copy(initList.begin(), initList.end(), odom_publisher_->msg_.pose.covariance.begin());
-  // odom_publisher_->msg_.pose.covariance = {
-  //   {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-  //    static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-  //    static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-  //    static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-  //    static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-  //    static_cast<double>(pose_cov_list[5])}};
   std::array<double, 36> temp_pose_cov_array = {
     {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
