@@ -703,17 +703,17 @@ void SwerveSteeringController::setOdomPubFields()
   // Get and check params for covariances
   XmlRpc::XmlRpcValue pose_cov_list;
   get_node().getParam("pose_covariance_diagonal", pose_cov_list);
-  ROS_ASSERT(pose_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  ROS_ASSERT(pose_cov_list.size() == 6);
+  BOOST_ASSERT(pose_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  BOOST_ASSERT(pose_cov_list.size() == 6);
   for (int i = 0; i < pose_cov_list.size(); ++i)
-    ROS_ASSERT(pose_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
+    BOOST_ASSERT(pose_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
 
   XmlRpc::XmlRpcValue twist_cov_list;
   get_node().getParam("twist_covariance_diagonal", twist_cov_list);
-  ROS_ASSERT(twist_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-  ROS_ASSERT(twist_cov_list.size() == 6);
+  BOOST_ASSERT(twist_cov_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  BOOST_ASSERT(twist_cov_list.size() == 6);
   for (int i = 0; i < twist_cov_list.size(); ++i)
-    ROS_ASSERT(twist_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
+    BOOST_ASSERT(twist_cov_list[i].getType() == XmlRpc::XmlRpcValue::TypeDouble);
 
   // Setup odometry realtime publisher + odom message constant fields
   auto odom_publisher_standard = get_node()->create_publisher<nav_msgs::msg::Odometry>("odom", 100);
@@ -722,24 +722,54 @@ void SwerveSteeringController::setOdomPubFields()
   odom_publisher_->msg_.header.frame_id = odom_frame_id_;
   odom_publisher_->msg_.child_frame_id = base_frame_id_;
   odom_publisher_->msg_.pose.pose.position.z = 0;
-  odom_publisher_->msg_.pose.covariance = {
-    static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(pose_cov_list[5])};
+  // odom_publisher_->msg_.pose.covariance = {
+  //   static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[5])};
+  // std::initializer_list<double> initList = {
+  //   static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+  //   static_cast<double>(pose_cov_list[5]), 0., 0., 0., 0., 0., 0.};
+  // auto initList = {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+  //                  static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+  //                  static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+  //                  static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+  //                  static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+  //                  static_cast<double>(pose_cov_list[5]), 0., 0., 0., 0., 0., 0.};
+  // std::copy(initList.begin(), initList.end(), odom_publisher_->msg_.pose.covariance.begin());
+  // odom_publisher_->msg_.pose.covariance = {
+  //   {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+  //    static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+  //    static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+  //    static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+  //    static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+  //    static_cast<double>(pose_cov_list[5])}};
+  std::array<double, 36> temp_pose_cov_array = {
+    {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(pose_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(pose_cov_list[5])}};
+  odom_publisher_->msg_.pose.covariance = temp_pose_cov_array;
   odom_publisher_->msg_.twist.twist.linear.y = 0;
   odom_publisher_->msg_.twist.twist.linear.z = 0;
   odom_publisher_->msg_.twist.twist.angular.x = 0;
   odom_publisher_->msg_.twist.twist.angular.y = 0;
-  odom_publisher_->msg_.twist.covariance = {
-    static_cast<double>(twist_cov_list[0]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(twist_cov_list[1]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(twist_cov_list[2]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(twist_cov_list[3]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-    static_cast<double>(twist_cov_list[5])};
+  std::array<double, 36> temp_twist_cov_array = {
+    {static_cast<double>(twist_cov_list[0]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(twist_cov_list[1]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(twist_cov_list[2]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(twist_cov_list[3]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
+     static_cast<double>(twist_cov_list[5]), 0., 0., 0., 0., 0., 0.}};
+  odom_publisher_->msg_.twist.covariance = temp_twist_cov_array;
 
   auto tf_odom_publisher_standard =
     get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", 100);
@@ -763,7 +793,7 @@ void SwerveSteeringController::publishWheelData(
     controller_state_pub_->msg_.header.stamp = time;
     const double control_duration = (time - time_previous_).seconds();
 
-    for (size_t i = 0; i < wheel_joints_size_; ++i)
+    for (int i = 0; i < wheel_joints_size_; ++i)
     {
       double holder_desired_velocity =
         (holders_desired_positions[i] - holders_desired_positions_previous_[i]) / cmd_dt;
