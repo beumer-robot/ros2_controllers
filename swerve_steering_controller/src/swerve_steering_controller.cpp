@@ -242,7 +242,7 @@ CallbackReturn SwerveSteeringController::on_init()
   cmd_subscriber_ = node->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
 
-  return true;
+  return CallbackReturn::SUCCESS;
 }
 
 controller_interface::return_type SwerveSteeringController::update(
@@ -391,7 +391,9 @@ void SwerveSteeringController::set_to_initial_state()
 
 void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & command)
 {
-  if (isRunning())
+  // note: ROS2 change
+  // Check if the lifecycle node is in the 'active' state
+  if (get_node()->get_current_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
   {
     if (
       !std::isfinite(command.angular.z) || !std::isfinite(command.linear.x) ||
