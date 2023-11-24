@@ -51,7 +51,6 @@
 
 namespace swerve_steering_controller
 {
-static const rclcpp::Logger LOGGER = rclcpp::get_logger("swerve_steering_controller.odometry");
 namespace bacc = boost::accumulators;
 
 class Odometry

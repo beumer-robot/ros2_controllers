@@ -45,6 +45,12 @@
 
 #pragma once
 
+namespace swerve_steering_controller
+{
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("swerve_steering_controller.odometry");
+static const rclcpp::Clock CLOCK = rclcpp::Clock();
+}  // namespace swerve_steering_controller
+
 struct utils
 {
   struct limits_types_intervals

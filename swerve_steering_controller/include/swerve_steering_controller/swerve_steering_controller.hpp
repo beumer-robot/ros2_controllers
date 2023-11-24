@@ -41,34 +41,33 @@
 #include <cmath>
 #include <vector>
 
-#include <controller_interface/controller_interface.hpp>
 #include <control_msgs/msg/joint_trajectory_controller_state.hpp>
+#include <controller_interface/controller_interface.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include "hardware_interface/handle.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 // #include <hardware_interface/joint_command_interface.h>
-// #include <hardware_interface/loans.hpp>  // ROS 2 uses a different approach for hardware interfaces
-#include "realtime_tools/realtime_box.h"
+// #include <hardware_interface/loans.hpp>  // ROS 2 uses a different approach for hardware
+// interfaces
 #include <realtime_tools/realtime_buffer.h>
 #include <realtime_tools/realtime_publisher.h>
-#include <nav_msgs/msg/odometry.hpp>
 #include <tf2/LinearMath/Quaternion.h>
+#include <nav_msgs/msg/odometry.hpp>
+#include "realtime_tools/realtime_box.h"
 // #include <tf/tf.h>
 #include <tf2_msgs/msg/tf_message.hpp>
 
-
+#include <swerve_steering_controller/visibility_control.h>
 #include <swerve_steering_controller/odometry.hpp>
 #include <swerve_steering_controller/speed_limiter.hpp>
 #include <swerve_steering_controller/utils.hpp>
 #include <swerve_steering_controller/wheel.hpp>
-#include <swerve_steering_controller/visibility_control.h>
 // #include "swerve_steering_controller_parameters.hpp"
 
 namespace swerve_steering_controller
 {
-static const rclcpp::Logger LOGGER = rclcpp::get_logger("swerve_steering_controller.swerve_steering_controller");
 using CallbackReturn = controller_interface::CallbackReturn;
 using namespace std::chrono_literals;
 class SwerveSteeringController : public controller_interface::ControllerInterface
@@ -114,7 +113,6 @@ public:
   SWERVE_STEERING_CONTROLLER_PUBLIC
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State & previous_state) override;
 
-
 private:
   // NEW
   // Handle structure for the swerve module interfaces
@@ -145,8 +143,10 @@ private:
   rclcpp::Duration publish_period_;
   rclcpp::Time last_state_publish_time_;
 
-  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odom_publisher_ = nullptr;
-  std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>> tf_odom_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odom_publisher_ =
+    nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>> tf_odom_publisher_ =
+    nullptr;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>>
     avg_intersection_publisher_ = nullptr;
 
@@ -184,24 +184,22 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_subscriber_;
   realtime_tools::RealtimeBuffer<utils::command> commands_buffer_;
 
-  std::shared_ptr<realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState> >
+  std::shared_ptr<
+    realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>>
     controller_state_pub_;
 
   void cmd_callback(const geometry_msgs::msg::Twist & command);
 
   bool getWheelParams(
-    const std::string & wheel_param,
-    const std::string & holder_param,
-    std::vector<std::string> & wheel_names,
-    std::vector<std::string> & holder_names);
-  bool getXmlStringList(
-    const std::string & list_param,
-    std::vector<std::string> & returned_names);
+    const std::string & wheel_param, const std::string & holder_param,
+    std::vector<std::string> & wheel_names, std::vector<std::string> & holder_names);
+  bool getXmlStringList(const std::string & list_param, std::vector<std::string> & returned_names);
 
   void setOdomPubFields();
 
   // Controller state publisher.. includes the whels and the holders
-  std::shared_ptr<realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState> >
+  std::shared_ptr<
+    realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>>
     controller_state_publisher;
 
   void set_to_initial_state();

@@ -36,8 +36,8 @@
  * Author: Mark Naeem
  */
 
-#include <swerve_steering_controller/swerve_steering_controller.hpp>
 #include <pluginlib/class_list_macros.hpp>
+#include <swerve_steering_controller/swerve_steering_controller.hpp>
 
 namespace swerve_steering_controller
 {
@@ -51,13 +51,18 @@ SwerveSteeringController::SwerveSteeringController()
 {
 }
 
-CallbackReturn SwerveSteeringController::on_configure(const rclcpp_lifecycle::State & previous_state) {
+CallbackReturn SwerveSteeringController::on_configure(
+  const rclcpp_lifecycle::State & previous_state)
+{
   auto velocity_interfaces = get_node()->get_command_interfaces("velocity");
   auto position_interfaces = get_node()->get_command_interfaces("position");
 
-  for (const auto& wheel_name : wheels_names) {
-    for (auto& interface : velocity_interfaces) {
-      if (interface.get_name() == wheel_name) {
+  for (const auto & wheel_name : wheels_names)
+  {
+    for (auto & interface : velocity_interfaces)
+    {
+      if (interface.get_name() == wheel_name)
+      {
         // Save the velocity interface for this wheel
         wheels_joints_handles_.emplace_back(interface);
         break;
@@ -138,10 +143,8 @@ CallbackReturn SwerveSteeringController::on_init()
   get_node().param(
     "angular/z/has_acceleration_limits", limiter_ang_.has_acceleration_limits,
     limiter_ang_.has_acceleration_limits);
-  get_node().param(
-    "angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
-  get_node().param(
-    "angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
+  get_node().param("angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
+  get_node().param("angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
   get_node().param(
     "angular/z/max_acceleration", limiter_ang_.max_acceleration, limiter_ang_.max_acceleration);
   get_node().param(
@@ -150,9 +153,12 @@ CallbackReturn SwerveSteeringController::on_init()
   // Wheel joint controller state:
   if (publish_wheel_joint_controller_state_)
   {
+    auto publish_wheel_joint_controller_state_standard =
+      get_node()->create_publisher<control_msgs::msg::JointTrajectoryControllerState>(
+        "wheel_joint_controller_state", 100);
     controller_state_pub_.reset(
       new realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>(
-        get_node(), "wheel_joint_controller_state", 100));
+        publish_wheel_joint_controller_state_standard));
 
     const size_t num_joints = wheel_joints_size_ * 2;  // for the steering joint and the wheel joint
 
@@ -193,7 +199,7 @@ CallbackReturn SwerveSteeringController::on_init()
   {
     RCLCPP_INFO_STREAM_ONCE(
       LOGGER, "Adding a wheel with joint name: "
-               << wheels_names[i] << " and a holder with joint name: " << holders_names[i]);
+                << wheels_names[i] << " and a holder with joint name: " << holders_names[i]);
     wheels_joints_handles_[i] = vel_joint_hw->getHandle(wheels_names[i]);    // throws on failure
     holders_joints_handles_[i] = pos_joint_hw->getHandle(holders_names[i]);  // throws on failure
   }
@@ -201,13 +207,15 @@ CallbackReturn SwerveSteeringController::on_init()
   // Odometry related:
   double publish_rate;
   get_node().param("publish_rate", publish_rate, 50.0);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
   publish_period_ = rclcpp::Duration(1.0 / publish_rate);
 
   int velocity_rolling_window_size = 4;
   get_node().param(
     "velocity_rolling_window_size", velocity_rolling_window_size, velocity_rolling_window_size);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
 
   odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
 
@@ -215,7 +223,8 @@ CallbackReturn SwerveSteeringController::on_init()
   RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
 
   get_node().param("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
 
   get_node().param("infinity_tolerance", infinity_tol_, 1000.0);
   RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
@@ -231,7 +240,8 @@ CallbackReturn SwerveSteeringController::on_init()
   return true;
 }
 
-controller_interface::return_type SwerveSteeringController::update(const rclcpp::Time & time, const rclcpp::Duration & period)
+controller_interface::return_type SwerveSteeringController::update(
+  const rclcpp::Time & time, const rclcpp::Duration & period)
 {
   std::vector<double> wheels_omega, holders_theta;
   std::vector<int> directions;
@@ -342,7 +352,7 @@ controller_interface::return_type SwerveSteeringController::update(const rclcpp:
 
   time_previous_ = time;
 
-  return controller_interface::return_type::OK; 
+  return controller_interface::return_type::OK;
 }
 
 CallbackReturn SwerveSteeringController::on_activate(const rclcpp::Time & time)
@@ -357,7 +367,8 @@ CallbackReturn SwerveSteeringController::on_activate(const rclcpp::Time & time)
   return CallbackReturn::SUCCESS;
 }
 
-CallbackReturn SwerveSteeringController::on_deactive(const rclcpp::Time & time) {
+CallbackReturn SwerveSteeringController::on_deactive(const rclcpp::Time & time)
+{
   set_to_initial_state();
 
   return CallbackReturn::SUCCESS;
@@ -381,7 +392,7 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
       !std::isfinite(command.angular.z) || !std::isfinite(command.linear.x) ||
       !std::isfinite(command.linear.y))
     {
-      RCLCPP_WARN_THROTTLE(1.0, "Received NaN in velocity command. Ignoring.");
+      RCLCPP_WARN_THROTTLE(LOGGER, CLOCK, 1000, "Received NaN in velocity command. Ignoring.");
       return;
     }
 
@@ -392,9 +403,9 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
     commands_buffer_.writeFromNonRT(cmd_);
     RCLCPP_DEBUG_STREAM_ONCE(
       LOGGER, "Added values to command. "
-               << "Ang: " << cmd_.w << ", "
-               << "Lin x,y: (" << cmd_.x << " , " << cmd_.y << "), "
-               << "Stamp: " << cmd_.stamp);
+                << "Ang: " << cmd_.w << ", "
+                << "Lin x,y: (" << cmd_.x << " , " << cmd_.y << "), "
+                << "Stamp: " << cmd_.stamp.nanoseconds() / 1000000000 << " s");
   }
   else
   {
@@ -402,9 +413,9 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
   }
 }
 
-bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
-  const std::string & holder_param, std::vector<std::string> & wheel_names,
-  std::vector<std::string> & holder_names)
+bool SwerveSteeringController::getWheelParams(
+  const std::string & wheel_param, const std::string & holder_param,
+  std::vector<std::string> & wheel_names, std::vector<std::string> & holder_names)
 {
   // prepare names for the joint handlers
   if (!(getXmlStringList(get_node(), wheel_param, wheel_names) &&
@@ -444,7 +455,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
     {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'radii' #" << i << " isn't of type double or int");
+      RCLCPP_ERROR_STREAM_ONCE(
+        LOGGER, "List param 'radii' #" << i << " isn't of type double or int");
       return false;
     }
     wheels_[i].radius = static_cast<double>(xml_list[i]);
@@ -470,7 +482,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
 
   else if (xml_list.size() != wheel_names.size())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' size is not equal to List param 'wheel' size");
+    RCLCPP_ERROR_STREAM_ONCE(
+      LOGGER, "List param 'position' size is not equal to List param 'wheel' size");
     return false;
   }
 
@@ -494,7 +507,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
       {
-        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'position' #" << i << " #" << j << " isn't of type int or double");
+        RCLCPP_ERROR_STREAM_ONCE(
+          LOGGER, "List param 'position' #" << i << " #" << j << " isn't of type int or double");
         return false;
       }
       position[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
@@ -552,7 +566,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
 
   else if (xml_list.size() != wheel_names.size())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' size is not equal to List param 'wheel' size");
+    RCLCPP_ERROR_STREAM_ONCE(
+      LOGGER, "List param 'limits' size is not equal to List param 'wheel' size");
     return false;
   }
 
@@ -584,7 +599,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeInt &&
         xml_list[i][j].getType() != XmlRpc::XmlRpcValue::TypeDouble)
       {
-        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'limits' #" << i << " #" << j << " isn't of type int or double");
+        RCLCPP_ERROR_STREAM_ONCE(
+          LOGGER, "List param 'limits' #" << i << " #" << j << " isn't of type int or double");
         return false;
       }
       limit[j] = utils::theta_map(static_cast<double>(xml_list[i][j]));
@@ -618,7 +634,8 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeDouble &&
       xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeInt)
     {
-      RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param 'offsets' #" << i << " isn't of type int or double ");
+      RCLCPP_ERROR_STREAM_ONCE(
+        LOGGER, "List param 'offsets' #" << i << " isn't of type int or double ");
       return false;
     }
     wheels_[i].offset = static_cast<double>(xml_list[i]);
@@ -628,8 +645,7 @@ bool SwerveSteeringController::getWheelParams(const std::string & wheel_param,
 }
 
 bool SwerveSteeringController::getXmlStringList(
-  const std::string & list_param,
-  std::vector<std::string> & returned_names)
+  const std::string & list_param, std::vector<std::string> & returned_names)
 {
   XmlRpc::XmlRpcValue xml_list;
   if (!get_node().getParam(list_param, xml_list))
@@ -650,7 +666,8 @@ bool SwerveSteeringController::getXmlStringList(
     {
       if (xml_list[i].getType() != XmlRpc::XmlRpcValue::TypeString)
       {
-        RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' #" << i << " isn't a string.");
+        RCLCPP_ERROR_STREAM_ONCE(
+          LOGGER, "List param '" << list_param << "' #" << i << " isn't a string.");
         return false;
       }
       else
@@ -667,7 +684,8 @@ bool SwerveSteeringController::getXmlStringList(
 
   else
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "List param '" << list_param << "' is neither a list of strings nor a string.");
+    RCLCPP_ERROR_STREAM_ONCE(
+      LOGGER, "List param '" << list_param << "' is neither a list of strings nor a string.");
     return false;
   }
 
@@ -676,9 +694,11 @@ bool SwerveSteeringController::getXmlStringList(
 
 void SwerveSteeringController::setOdomPubFields()
 {
-  auto avg_intersection_publisher_standard = get_node()->create_publisher<geometry_msgs::msg::Point>(
-    "avg_intersection", 100);
-  avg_intersection_publisher_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(avg_intersection_publisher_standard));  // to show the avg intersection
+  auto avg_intersection_publisher_standard =
+    get_node()->create_publisher<geometry_msgs::msg::Point>("avg_intersection", 100);
+  avg_intersection_publisher_.reset(
+    new realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>(
+      avg_intersection_publisher_standard));  // to show the avg intersection
 
   // Get and check params for covariances
   XmlRpc::XmlRpcValue pose_cov_list;
@@ -721,7 +741,8 @@ void SwerveSteeringController::setOdomPubFields()
     static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
     static_cast<double>(twist_cov_list[5])};
 
-  auto tf_odom_publisher_standard = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", 100);
+  auto tf_odom_publisher_standard =
+    get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", 100);
   tf_odom_publisher_.reset(
     new realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>(tf_odom_publisher_standard));
   tf_odom_publisher_->msg_.transforms.resize(1);
