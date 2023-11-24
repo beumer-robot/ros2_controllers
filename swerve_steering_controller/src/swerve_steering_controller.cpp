@@ -78,12 +78,15 @@ CallbackReturn SwerveSteeringController::on_configure(
 //   rclcpp::NodeHandle & controller_nh)
 CallbackReturn SwerveSteeringController::on_init()
 {
-  const std::string complete_ns = get_node().getNamespace();
+  // note: ROS2 change
+  auto node = get_node();
+
+  const std::string complete_ns = node.getNamespace();
   std::size_t id = complete_ns.find_last_of("/");
   // name_ = complete_ns.substr(id + 1);
 
   std::vector<std::string> holders_names, wheels_names;
-  if (!getWheelParams(get_node(), "wheels", "holders", wheels_names, holders_names))
+  if (!getWheelParams("wheels", "holders", wheels_names, holders_names))
   {
     RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't import the wheels");
     return false;
@@ -102,59 +105,61 @@ CallbackReturn SwerveSteeringController::on_init()
   wheels_joints_handles_.resize(wheel_joints_size_);
   holders_joints_handles_.resize(wheel_joints_size_);
 
-  get_node().param(
+  node->get_parameter_or(
     "publish_wheel_joint_controller_state", publish_wheel_joint_controller_state_,
     publish_wheel_joint_controller_state_);
 
   // Velocity and acceleration limits:
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/has_velocity_limits", limiter_lin_x_.has_velocity_limits,
     limiter_lin_x_.has_velocity_limits);
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/has_acceleration_limits", limiter_lin_x_.has_acceleration_limits,
     limiter_lin_x_.has_acceleration_limits);
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/max_velocity", limiter_lin_x_.max_velocity, limiter_lin_x_.max_velocity);
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/min_velocity", limiter_lin_x_.min_velocity, -limiter_lin_x_.max_velocity);
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/max_acceleration", limiter_lin_x_.max_acceleration, limiter_lin_x_.max_acceleration);
-  get_node().param(
+  node->get_parameter_or(
     "linear/x/min_acceleration", limiter_lin_x_.min_acceleration, -limiter_lin_x_.max_acceleration);
 
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/has_velocity_limits", limiter_lin_y_.has_velocity_limits,
     limiter_lin_y_.has_velocity_limits);
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/has_acceleration_limits", limiter_lin_y_.has_acceleration_limits,
     limiter_lin_y_.has_acceleration_limits);
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/max_velocity", limiter_lin_y_.max_velocity, limiter_lin_y_.max_velocity);
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/min_velocity", limiter_lin_y_.min_velocity, -limiter_lin_y_.max_velocity);
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/max_acceleration", limiter_lin_y_.max_acceleration, limiter_lin_y_.max_acceleration);
-  get_node().param(
+  node->get_parameter_or(
     "linear/y/min_acceleration", limiter_lin_y_.min_acceleration, -limiter_lin_y_.max_acceleration);
 
-  get_node().param(
+  node->get_parameter_or(
     "angular/z/has_velocity_limits", limiter_ang_.has_velocity_limits,
     limiter_ang_.has_velocity_limits);
-  get_node().param(
+  node->get_parameter_or(
     "angular/z/has_acceleration_limits", limiter_ang_.has_acceleration_limits,
     limiter_ang_.has_acceleration_limits);
-  get_node().param("angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
-  get_node().param("angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
-  get_node().param(
+  node->get_parameter_or(
+    "angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
+  node->get_parameter_or(
+    "angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
+  node->get_parameter_or(
     "angular/z/max_acceleration", limiter_ang_.max_acceleration, limiter_ang_.max_acceleration);
-  get_node().param(
+  node->get_parameter_or(
     "angular/z/min_acceleration", limiter_ang_.min_acceleration, -limiter_ang_.max_acceleration);
 
   // Wheel joint controller state:
   if (publish_wheel_joint_controller_state_)
   {
     auto publish_wheel_joint_controller_state_standard =
-      get_node()->create_publisher<control_msgs::msg::JointTrajectoryControllerState>(
+      node->create_publisher<control_msgs::msg::JointTrajectoryControllerState>(
         "wheel_joint_controller_state", 100);
     controller_state_pub_.reset(
       new realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>(
@@ -206,35 +211,35 @@ CallbackReturn SwerveSteeringController::on_init()
 
   // Odometry related:
   double publish_rate;
-  get_node().param("publish_rate", publish_rate, 50.0);
+  node->get_parameter_or("publish_rate", publish_rate, 50.0);
   RCLCPP_INFO_STREAM_ONCE(
     LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
   publish_period_ = rclcpp::Duration(1.0 / publish_rate);
 
   int velocity_rolling_window_size = 4;
-  get_node().param(
+  node->get_parameter_or(
     "velocity_rolling_window_size", velocity_rolling_window_size, velocity_rolling_window_size);
   RCLCPP_INFO_STREAM_ONCE(
     LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
 
   odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
 
-  get_node().param("base_frame_id", base_frame_id_, base_frame_id_);
+  node->get_parameter_or("base_frame_id", base_frame_id_, base_frame_id_);
   RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
 
-  get_node().param("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
+  node->get_parameter_or("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
   RCLCPP_INFO_STREAM_ONCE(
     LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
 
-  get_node().param("infinity_tolerance", infinity_tol_, 1000.0);
+  node->get_parameter_or("infinity_tolerance", infinity_tol_, 1000.0);
   RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
 
-  get_node().param("intersection_tolerance", intersection_tol_, 0.1);
+  node->get_parameter_or("intersection_tolerance", intersection_tol_, 0.1);
   RCLCPP_INFO_STREAM_ONCE(LOGGER, "intersection tolerance set to " << intersection_tol_);
 
   // cmd_subscriber_ =
-  //   get_node().subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
-  cmd_subscriber_ = get_node()->create_subscription<geometry_msgs::msg::Twist>(
+  //   node.subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
+  cmd_subscriber_ = node->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
 
   return true;
@@ -734,7 +739,7 @@ void SwerveSteeringController::setOdomPubFields()
      static_cast<double>(twist_cov_list[2]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(twist_cov_list[3]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
-     static_cast<double>(twist_cov_list[5]), 0., 0., 0., 0., 0., 0.}};
+     static_cast<double>(twist_cov_list[5])}};
   odom_publisher_->msg_.twist.covariance = temp_twist_cov_array;
 
   auto tf_odom_publisher_standard =
