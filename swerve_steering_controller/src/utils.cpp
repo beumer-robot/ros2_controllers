@@ -54,10 +54,13 @@ std::array<double, 2> utils::sort_two(const double & a, const double & b)
 
 double utils::theta_map(const double & theta)
 {
-  if (isclose(theta, M_PI)) return M_PI;  // to keep the 180 as is
-  return fmod((theta + M_PI), 2 * M_PI) - M_PI;
-}
+  // if (isclose(theta, M_PI)) return M_PI;  // to keep the 180 as is
+  // return fmod((theta + M_PI), 2 * M_PI) - M_PI;
 
+  auto temp = std::fmod(theta + M_PI, 2 * M_PI);
+  return (temp < 0) ? temp + M_PI : temp - M_PI;
+
+}
 double utils::isclose(const double & a, const double & b, const double tol, const double bias)
 {
   return fabs(bias - fabs(a - b)) <= tol;

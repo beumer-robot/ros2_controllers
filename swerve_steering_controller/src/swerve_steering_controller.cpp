@@ -39,6 +39,15 @@
 #include <pluginlib/class_list_macros.hpp>
 #include <swerve_steering_controller/swerve_steering_controller.hpp>
 
+namespace
+{
+constexpr auto DEFAULT_COMMAND_TOPIC = "~/cmd_vel";
+constexpr auto DEFAULT_COMMAND_UNSTAMPED_TOPIC = "~/cmd_vel_unstamped";
+constexpr auto DEFAULT_COMMAND_OUT_TOPIC = "~/cmd_vel_out";
+constexpr auto DEFAULT_ODOMETRY_TOPIC = "~/odom";
+constexpr auto DEFAULT_TRANSFORM_TOPIC = "/tf";
+}  // namespace
+
 namespace swerve_steering_controller
 {
 SwerveSteeringController::SwerveSteeringController()
@@ -54,43 +63,51 @@ SwerveSteeringController::SwerveSteeringController()
 CallbackReturn SwerveSteeringController::on_configure(
   const rclcpp_lifecycle::State & previous_state)
 {
-  auto velocity_interfaces = get_node()->get_command_interfaces("velocity");
-  auto position_interfaces = get_node()->get_command_interfaces("position");
+  auto logger = get_node()->get_logger();
 
-  for (const auto & wheel_name : wheels_names)
+  // Example of parameter update and validation
+  // This assumes you have a mechanism similar to `param_listener_` to update parameters
+  if (param_listener_->is_old(params_))
   {
-    for (auto & interface : velocity_interfaces)
-    {
-      if (interface.get_name() == wheel_name)
-      {
-        // Save the velocity interface for this wheel
-        wheels_joints_handles_.emplace_back(interface);
-        break;
-      }
-    }
-
-    // Similar loop for position interfaces and holders_joints_handles_
+    params_ = param_listener_->get_params();
+    RCLCPP_INFO(logger, "Parameters were updated");
   }
-}
 
-// bool SwerveSteeringController::init(
-//   hardware_interface::RobotHW * robot_hw, rclcpp::NodeHandle & root_nh,
-//   rclcpp::NodeHandle & controller_nh)
-CallbackReturn SwerveSteeringController::on_init()
-{
-  // note: ROS2 change
-  auto node = get_node();
-
-  const std::string complete_ns = node->getNamespace();
-  std::size_t id = complete_ns.find_last_of("/");
-  // name_ = complete_ns.substr(id + 1);
-
-  std::vector<std::string> holders_names, wheels_names;
-  if (!getWheelParams("wheels", "holders", wheels_names, holders_names))
+  if (params_.wheel_names.empty())
   {
-    RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't import the wheels");
-    CallbackReturn::ERROR;
+    RCLCPP_ERROR(logger, "Wheel names parameters are empty!");
+    return controller_interface::CallbackReturn::ERROR;
   }
+
+  // unpack params_
+  limiter_lin_x_ = SpeedLimiter(
+    params_.linear.x.has_velocity_limits, params_.linear.x.has_acceleration_limits,
+    params_.linear.x.has_jerk_limits, params_.linear.x.min_velocity, params_.linear.x.max_velocity,
+    params_.linear.x.min_acceleration, params_.linear.x.max_acceleration, params_.linear.x.min_jerk,
+    params_.linear.x.max_jerk);
+
+  limiter_lin_y_ = SpeedLimiter(
+    params_.linear.y.has_velocity_limits, params_.linear.y.has_acceleration_limits,
+    params_.linear.y.has_jerk_limits, params_.linear.y.min_velocity, params_.linear.y.max_velocity,
+    params_.linear.y.min_acceleration, params_.linear.y.max_acceleration, params_.linear.y.min_jerk,
+    params_.linear.y.max_jerk);
+    
+  limiter_ang_ = SpeedLimiter(
+    params_.angular.z.has_velocity_limits, params_.angular.z.has_acceleration_limits,
+    params_.angular.z.has_jerk_limits, params_.angular.z.min_velocity,
+    params_.angular.z.max_velocity, params_.angular.z.min_acceleration,
+    params_.angular.z.max_acceleration, params_.angular.z.min_jerk, params_.angular.z.max_jerk);
+  
+  std::vector<std::string> wheel_names_ = params_.wheel_names;
+  std::vector<std::string> holders_names_ = params_.holder_names;
+  // unpack wheel data
+  if (!getWheelParams())
+  {
+    RCLCPP_ERROR(logger, "Couldn't import the wheels");
+    return controller_interface::CallbackReturn::ERROR;
+  }
+  
+  // odometry related
   std::vector<double> radii;
   std::vector<std::array<double, 2>> positions;
   for (const auto & it : wheels_)
@@ -99,63 +116,16 @@ CallbackReturn SwerveSteeringController::on_init()
     positions.push_back(it.position);
   }
   odometry_.setWheelsParams(radii, positions);
+  odometry_.setVelocityRollingWindowSize(params_.velocity_rolling_window_size);
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Velocity rolling window size of " << params_.velocity_rolling_window_size << ".");
 
-  wheel_joints_size_ = wheels_names.size();
+  wheel_joints_size_ = wheel_names_.size();
+  
+  wheel_handles_.resize(wheel_joints_size_);
 
-  wheels_joints_handles_.resize(wheel_joints_size_);
-  holders_joints_handles_.resize(wheel_joints_size_);
-
-  node->get_parameter_or(
-    "publish_wheel_joint_controller_state", publish_wheel_joint_controller_state_,
-    publish_wheel_joint_controller_state_);
-
-  // Velocity and acceleration limits:
-  node->get_parameter_or(
-    "linear/x/has_velocity_limits", limiter_lin_x_.has_velocity_limits,
-    limiter_lin_x_.has_velocity_limits);
-  node->get_parameter_or(
-    "linear/x/has_acceleration_limits", limiter_lin_x_.has_acceleration_limits,
-    limiter_lin_x_.has_acceleration_limits);
-  node->get_parameter_or(
-    "linear/x/max_velocity", limiter_lin_x_.max_velocity, limiter_lin_x_.max_velocity);
-  node->get_parameter_or(
-    "linear/x/min_velocity", limiter_lin_x_.min_velocity, -limiter_lin_x_.max_velocity);
-  node->get_parameter_or(
-    "linear/x/max_acceleration", limiter_lin_x_.max_acceleration, limiter_lin_x_.max_acceleration);
-  node->get_parameter_or(
-    "linear/x/min_acceleration", limiter_lin_x_.min_acceleration, -limiter_lin_x_.max_acceleration);
-
-  node->get_parameter_or(
-    "linear/y/has_velocity_limits", limiter_lin_y_.has_velocity_limits,
-    limiter_lin_y_.has_velocity_limits);
-  node->get_parameter_or(
-    "linear/y/has_acceleration_limits", limiter_lin_y_.has_acceleration_limits,
-    limiter_lin_y_.has_acceleration_limits);
-  node->get_parameter_or(
-    "linear/y/max_velocity", limiter_lin_y_.max_velocity, limiter_lin_y_.max_velocity);
-  node->get_parameter_or(
-    "linear/y/min_velocity", limiter_lin_y_.min_velocity, -limiter_lin_y_.max_velocity);
-  node->get_parameter_or(
-    "linear/y/max_acceleration", limiter_lin_y_.max_acceleration, limiter_lin_y_.max_acceleration);
-  node->get_parameter_or(
-    "linear/y/min_acceleration", limiter_lin_y_.min_acceleration, -limiter_lin_y_.max_acceleration);
-
-  node->get_parameter_or(
-    "angular/z/has_velocity_limits", limiter_ang_.has_velocity_limits,
-    limiter_ang_.has_velocity_limits);
-  node->get_parameter_or(
-    "angular/z/has_acceleration_limits", limiter_ang_.has_acceleration_limits,
-    limiter_ang_.has_acceleration_limits);
-  node->get_parameter_or(
-    "angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
-  node->get_parameter_or(
-    "angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
-  node->get_parameter_or(
-    "angular/z/max_acceleration", limiter_ang_.max_acceleration, limiter_ang_.max_acceleration);
-  node->get_parameter_or(
-    "angular/z/min_acceleration", limiter_ang_.min_acceleration, -limiter_ang_.max_acceleration);
-
-  // Wheel joint controller state:
+  publish_wheel_joint_controller_state_ = params_.publish_wheel_joint_controller_state;
+  
   if (publish_wheel_joint_controller_state_)
   {
     auto publish_wheel_joint_controller_state_standard =
@@ -193,7 +163,31 @@ CallbackReturn SwerveSteeringController::on_init()
 
   // remember: set the odom fields when it all works
   setOdomPubFields();
+  // limit the publication on the topics /odom and /tf
+  publish_rate_ = params_.publish_rate;
+  publish_period_ = rclcpp::Duration::from_seconds(1.0 / publish_rate_);
 
+
+  enable_odom_tf_ = params_.enable_odom_tf;
+  base_frame_id_ = params_.base_frame_id;
+  odom_frame_id_ = params_.odom_frame_id;
+  
+
+  infinity_tol_ = params_.infinity_tolerance;
+  intersection_tol_ = params_.intersection_tolerance;
+  
+
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Controller state will be published at " << params_.publish_rate << "Hz.");
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
+  RCLCPP_INFO_STREAM_ONCE(
+    LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
+  RCLCPP_INFO_STREAM_ONCE(LOGGER, "intersection tolerance set to " << intersection_tol_);
+
+
+
+  hardware_interface::HW_IF_VELOCITY
   hardware_interface::VelocityJointInterface * const vel_joint_hw =
     robot_hw->get<hardware_interface::VelocityJointInterface>();
   hardware_interface::PositionJointInterface * const pos_joint_hw =
@@ -209,40 +203,203 @@ CallbackReturn SwerveSteeringController::on_init()
     holders_joints_handles_[i] = pos_joint_hw->getHandle(holders_names[i]);  // throws on failure
   }
 
-  // Odometry related:
-  double publish_rate;
-  node->get_parameter_or("publish_rate", publish_rate, 50.0);
-  RCLCPP_INFO_STREAM_ONCE(
-    LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
-  publish_period_ = rclcpp::Duration(1.0 / publish_rate);
-
-  int velocity_rolling_window_size = 4;
-  node->get_parameter_or(
-    "velocity_rolling_window_size", velocity_rolling_window_size, velocity_rolling_window_size);
-  RCLCPP_INFO_STREAM_ONCE(
-    LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
-
-  odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
-
-  node->get_parameter_or("base_frame_id", base_frame_id_, base_frame_id_);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
-
-  node->get_parameter_or("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
-  RCLCPP_INFO_STREAM_ONCE(
-    LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
-
-  node->get_parameter_or("infinity_tolerance", infinity_tol_, 1000.0);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
-
-  node->get_parameter_or("intersection_tolerance", intersection_tol_, 0.1);
-  RCLCPP_INFO_STREAM_ONCE(LOGGER, "intersection tolerance set to " << intersection_tol_);
-
   // cmd_subscriber_ =
   //   node.subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
   cmd_subscriber_ = node->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
 
-  return CallbackReturn::SUCCESS;
+  last_state_publish_time_ = get_node()->get_clock()->now();
+
+
+  return controller_interface::CallbackReturn::SUCCESS;
+}
+
+// bool SwerveSteeringController::init(
+//   hardware_interface::RobotHW * robot_hw, rclcpp::NodeHandle & root_nh,
+//   rclcpp::NodeHandle & controller_nh)
+CallbackReturn SwerveSteeringController::on_init()
+{
+  try
+  {
+    // Create the parameter listener and get the parameters
+    param_listener_ = std::make_shared<ParamListener>(get_node());
+    params_ = param_listener_->get_params();
+  }
+  catch (const std::exception & e)
+  {
+    fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  return controller_interface::CallbackReturn::SUCCESS;
+
+
+  // // note: ROS2 change
+  // auto node = get_node();
+
+  // // const std::string complete_ns = node->get_namespace();
+  // // std::size_t id = complete_ns.find_last_of("/");
+  // // // name_ = complete_ns.substr(id + 1);
+
+  // std::vector<std::string> holders_names, wheels_names;
+  // if (!getWheelParams("wheels", "holders", wheels_names, holders_names))
+  // {
+  //   RCLCPP_ERROR_STREAM_ONCE(LOGGER, "Couldn't import the wheels");
+  //   CallbackReturn::ERROR;
+  // }
+  // std::vector<double> radii;
+  // std::vector<std::array<double, 2>> positions;
+  // for (const auto & it : wheels_)
+  // {
+  //   radii.push_back(it.radius);
+  //   positions.push_back(it.position);
+  // }
+  // odometry_.setWheelsParams(radii, positions);
+
+  // wheel_joints_size_ = wheels_names.size();
+
+  // wheels_joints_handles_.resize(wheel_joints_size_);
+  // holders_joints_handles_.resize(wheel_joints_size_);
+
+  
+  // node->get_parameter_or(
+  //   "publish_wheel_joint_controller_state", publish_wheel_joint_controller_state_,
+  //   publish_wheel_joint_controller_state_);
+
+  // // Velocity and acceleration limits:
+  // node->get_parameter_or(
+  //   "linear/x/has_velocity_limits", limiter_lin_x_.has_velocity_limits,
+  //   limiter_lin_x_.has_velocity_limits);
+  // node->get_parameter_or(
+  //   "linear/x/has_acceleration_limits", limiter_lin_x_.has_acceleration_limits,
+  //   limiter_lin_x_.has_acceleration_limits);
+  // node->get_parameter_or(
+  //   "linear/x/max_velocity", limiter_lin_x_.max_velocity, limiter_lin_x_.max_velocity);
+  // node->get_parameter_or(
+  //   "linear/x/min_velocity", limiter_lin_x_.min_velocity, -limiter_lin_x_.max_velocity);
+  // node->get_parameter_or(
+  //   "linear/x/max_acceleration", limiter_lin_x_.max_acceleration, limiter_lin_x_.max_acceleration);
+  // node->get_parameter_or(
+  //   "linear/x/min_acceleration", limiter_lin_x_.min_acceleration, -limiter_lin_x_.max_acceleration);
+
+  // node->get_parameter_or(
+  //   "linear/y/has_velocity_limits", limiter_lin_y_.has_velocity_limits,
+  //   limiter_lin_y_.has_velocity_limits);
+  // node->get_parameter_or(
+  //   "linear/y/has_acceleration_limits", limiter_lin_y_.has_acceleration_limits,
+  //   limiter_lin_y_.has_acceleration_limits);
+  // node->get_parameter_or(
+  //   "linear/y/max_velocity", limiter_lin_y_.max_velocity, limiter_lin_y_.max_velocity);
+  // node->get_parameter_or(
+  //   "linear/y/min_velocity", limiter_lin_y_.min_velocity, -limiter_lin_y_.max_velocity);
+  // node->get_parameter_or(
+  //   "linear/y/max_acceleration", limiter_lin_y_.max_acceleration, limiter_lin_y_.max_acceleration);
+  // node->get_parameter_or(
+  //   "linear/y/min_acceleration", limiter_lin_y_.min_acceleration, -limiter_lin_y_.max_acceleration);
+
+  // node->get_parameter_or(
+  //   "angular/z/has_velocity_limits", limiter_ang_.has_velocity_limits,
+  //   limiter_ang_.has_velocity_limits);
+  // node->get_parameter_or(
+  //   "angular/z/has_acceleration_limits", limiter_ang_.has_acceleration_limits,
+  //   limiter_ang_.has_acceleration_limits);
+  // node->get_parameter_or(
+  //   "angular/z/max_velocity", limiter_ang_.max_velocity, limiter_ang_.max_velocity);
+  // node->get_parameter_or(
+  //   "angular/z/min_velocity", limiter_ang_.min_velocity, -limiter_ang_.max_velocity);
+  // node->get_parameter_or(
+  //   "angular/z/max_acceleration", limiter_ang_.max_acceleration, limiter_ang_.max_acceleration);
+  // node->get_parameter_or(
+  //   "angular/z/min_acceleration", limiter_ang_.min_acceleration, -limiter_ang_.max_acceleration);
+
+  // // Wheel joint controller state:
+  // if (publish_wheel_joint_controller_state_)
+  // {
+  //   auto publish_wheel_joint_controller_state_standard =
+  //     node->create_publisher<control_msgs::msg::JointTrajectoryControllerState>(
+  //       "wheel_joint_controller_state", 100);
+  //   controller_state_pub_.reset(
+  //     new realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>(
+  //       publish_wheel_joint_controller_state_standard));
+
+  //   const size_t num_joints = wheel_joints_size_ * 2;  // for the steering joint and the wheel joint
+
+  //   controller_state_pub_->msg_.joint_names.resize(num_joints);
+
+  //   controller_state_pub_->msg_.desired.positions.resize(num_joints);
+  //   controller_state_pub_->msg_.desired.velocities.resize(num_joints);
+  //   controller_state_pub_->msg_.desired.accelerations.resize(num_joints);
+  //   controller_state_pub_->msg_.desired.effort.resize(num_joints);
+
+  //   controller_state_pub_->msg_.actual.positions.resize(num_joints);
+  //   controller_state_pub_->msg_.actual.velocities.resize(num_joints);
+  //   controller_state_pub_->msg_.actual.accelerations.resize(num_joints);
+  //   controller_state_pub_->msg_.actual.effort.resize(num_joints);
+
+  //   controller_state_pub_->msg_.error.positions.resize(num_joints);
+  //   controller_state_pub_->msg_.error.velocities.resize(num_joints);
+  //   controller_state_pub_->msg_.error.accelerations.resize(num_joints);
+  //   controller_state_pub_->msg_.error.effort.resize(num_joints);
+
+  //   for (size_t i = 0; i < wheel_joints_size_; ++i)
+  //   {
+  //     controller_state_pub_->msg_.joint_names[i] = wheels_names[i];
+  //     controller_state_pub_->msg_.joint_names[i + wheel_joints_size_] = holders_names[i];
+  //   }
+  // }
+
+  // // remember: set the odom fields when it all works
+  // setOdomPubFields();
+  // hardware_interface::HW_IF_VELOCITY
+  // hardware_interface::VelocityJointInterface * const vel_joint_hw =
+  //   robot_hw->get<hardware_interface::VelocityJointInterface>();
+  // hardware_interface::PositionJointInterface * const pos_joint_hw =
+  //   robot_hw->get<hardware_interface::PositionJointInterface>();
+
+  // // Get the joint object to use in the realtime loop
+  // for (size_t i = 0; i < wheel_joints_size_; ++i)
+  // {
+  //   RCLCPP_INFO_STREAM_ONCE(
+  //     LOGGER, "Adding a wheel with joint name: "
+  //               << wheels_names[i] << " and a holder with joint name: " << holders_names[i]);
+  //   wheels_joints_handles_[i] = vel_joint_hw->getHandle(wheels_names[i]);    // throws on failure
+  //   holders_joints_handles_[i] = pos_joint_hw->getHandle(holders_names[i]);  // throws on failure
+  // }
+
+  // // Odometry related:
+  // double publish_rate;
+  // node->get_parameter_or("publish_rate", publish_rate, 50.0);
+  // RCLCPP_INFO_STREAM_ONCE(
+  //   LOGGER, "Controller state will be published at " << publish_rate << "Hz.");
+  // publish_period_ = rclcpp::Duration(1.0 / publish_rate);
+
+  // int velocity_rolling_window_size = 4;
+  // node->get_parameter_or(
+  //   "velocity_rolling_window_size", velocity_rolling_window_size, velocity_rolling_window_size);
+  // RCLCPP_INFO_STREAM_ONCE(
+  //   LOGGER, "Velocity rolling window size of " << velocity_rolling_window_size << ".");
+
+  // odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
+
+  // node->get_parameter_or("base_frame_id", base_frame_id_, base_frame_id_);
+  // RCLCPP_INFO_STREAM_ONCE(LOGGER, "Base frame_id set to " << base_frame_id_);
+
+  // node->get_parameter_or("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
+  // RCLCPP_INFO_STREAM_ONCE(
+  //   LOGGER, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
+
+  // node->get_parameter_or("infinity_tolerance", infinity_tol_, 1000.0);
+  // RCLCPP_INFO_STREAM_ONCE(LOGGER, "infinity tolerance set to " << infinity_tol_);
+
+  // node->get_parameter_or("intersection_tolerance", intersection_tol_, 0.1);
+  // RCLCPP_INFO_STREAM_ONCE(LOGGER, "intersection tolerance set to " << intersection_tol_);
+
+  // // cmd_subscriber_ =
+  // //   node.subscribe("cmd_vel", 1, &SwerveSteeringController::cmd_callback, this);
+  // cmd_subscriber_ = node->create_subscription<geometry_msgs::msg::Twist>(
+  //   "cmd_vel", 1, std::bind(&SwerveSteeringController::cmd_callback, this, std::placeholders::_1));
+
+  // return CallbackReturn::SUCCESS;
 }
 
 controller_interface::return_type SwerveSteeringController::update(
@@ -277,27 +434,27 @@ controller_interface::return_type SwerveSteeringController::update(
       tf::createQuaternionMsgFromYaw(odometry_.getHeading()));
 
     // Populate odom message and publish
-    if (odom_publisher_->trylock())
+    if (realtime_odometry_publisher_->trylock())
     {
-      odom_publisher_->msg_.header.stamp = time;
-      odom_publisher_->msg_.pose.pose.position.x = odometry_.getX();
-      odom_publisher_->msg_.pose.pose.position.y = odometry_.getY();
-      odom_publisher_->msg_.pose.pose.orientation = orientation;
-      odom_publisher_->msg_.twist.twist.linear.x = odometry_.getLinearX();
-      odom_publisher_->msg_.twist.twist.linear.y = odometry_.getLinearY();
-      odom_publisher_->msg_.twist.twist.angular.z = odometry_.getAngular();
-      odom_publisher_->unlockAndPublish();
+      realtime_odometry_publisher_->msg_.header.stamp = time;
+      realtime_odometry_publisher_->msg_.pose.pose.position.x = odometry_.getX();
+      realtime_odometry_publisher_->msg_.pose.pose.position.y = odometry_.getY();
+      realtime_odometry_publisher_->msg_.pose.pose.orientation = orientation;
+      realtime_odometry_publisher_->msg_.twist.twist.linear.x = odometry_.getLinearX();
+      realtime_odometry_publisher_->msg_.twist.twist.linear.y = odometry_.getLinearY();
+      realtime_odometry_publisher_->msg_.twist.twist.angular.z = odometry_.getAngular();
+      realtime_odometry_publisher_->unlockAndPublish();
     }
 
     // Publish tf /odom frame
-    if (enable_odom_tf_ && tf_odom_publisher_->trylock())
+    if (enable_odom_tf_ && realtime_tf_odom_publisher_->trylock())
     {
-      geometry_msgs::msg::TransformStamped & odom_frame = tf_odom_publisher_->msg_.transforms[0];
+      geometry_msgs::msg::TransformStamped & odom_frame = realtime_tf_odom_publisher_->msg_.transforms[0];
       odom_frame.header.stamp = time;
       odom_frame.transform.translation.x = odometry_.getX();
       odom_frame.transform.translation.y = odometry_.getY();
       odom_frame.transform.rotation = orientation;
-      tf_odom_publisher_->unlockAndPublish();
+      realtime_tf_odom_publisher_->unlockAndPublish();
     }
   }
 
@@ -364,6 +521,8 @@ CallbackReturn SwerveSteeringController::on_activate(const rclcpp::Time & time)
 {
   set_to_initial_state();
 
+  setWheelHandles();
+
   odometry_.init(time, infinity_tol_, intersection_tol_);
 
   last_state_publish_time_ = time;
@@ -421,9 +580,7 @@ void SwerveSteeringController::cmd_callback(const geometry_msgs::msg::Twist & co
   }
 }
 
-bool SwerveSteeringController::getWheelParams(
-  const std::string & wheel_param, const std::string & holder_param,
-  std::vector<std::string> & wheel_names, std::vector<std::string> & holder_names)
+bool SwerveSteeringController::getWheelParams()
 {
   // // prepare names for the joint handlers
   // if (!(getXmlStringList(get_node(), wheel_param, wheel_names) &&
@@ -433,19 +590,20 @@ bool SwerveSteeringController::getWheelParams(
   // }
   // note: Changed to ROS2 parameter server
   // prepare names for the joint handlers
-  std::vector<std::string> wheel_names;
-  std::vector<std::string> holder_names;
+  std::vector<std::string> wheel_names = params_.wheel_names;
+  std::vector<std::string> holder_names = params_.holder_names;
 
-  if (
-    !get_node()->get_parameter(wheel_param, wheel_names) ||
-    !get_node()->get_parameter(holder_param, holder_names))
+  if (wheel_names.empty() || holder_names.empty())
   {
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to retrieve wheel or holder names");
     return false;
   }
-
-  // Further processing with wheel_names and holder_names as needed
-
+  if (wheel_names.size() != holder_names.size())
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "Wheel and holder names are not of the same size");
+    return false;
+  }
+  
   /*prepare radii, limits, limitless flag for the wheels classes*/
 
   // initialize wheels vector
@@ -453,80 +611,85 @@ bool SwerveSteeringController::getWheelParams(
 
   // note: Changed to ROS2 parameter server
   // Retrieve the radii
-  std::vector<double> radii;
-  if (!get_node()->get_parameter("radii", radii))
+  for (size_t i = 0; i < wheels_.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'radii'");
+    wheels_[i].radius = params_.wheel_radius;
+  }
+
+  std::vector<double> wheels_positions_x = params_.wheels_positions.x;
+  std::vector<double> wheels_positions_y = params_.wheels_positions.y;
+
+  if (wheels_positions_x.size() != wheels_.size() || wheels_positions_y.size() != wheels_.size())
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Wheels positions x and y are not of the same size as the number of wheels");
     return false;
   }
 
-  if (radii.empty())
+  for (size_t i = 0; i < wheels_.size(); ++i)
   {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'radii' is an empty list");
-    return false;
+    wheels_[i].position = {wheels_positions_x[i], wheels_positions_y[i]};
   }
 
-  for (size_t i = 0; i < radii.size(); ++i)
-  {
-    wheels_[i].radius = radii[i];
-  }
 
   // note: Changed to ROS2 parameter server
   // Retrieve the positions
   // std::vector<std::vector<double>> positions;
   // attention: attempting to retrieve as flat and then reconstructing to
   // std::vector<std::vector<double>>
-  std::vector<double> flat_positions_retrieved;
-  if (!get_node()->get_parameter("positions", flat_positions_retrieved))
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'positions'");
-    return false;
-  }
-  // attention: reconstruct to std::vector<std::vector<double>>
-  std::vector<std::vector<double>> positions;
-  for (size_t i = 0; i < flat_positions_retrieved.size(); i += 2)
-  {
-    positions.push_back({flat_positions_retrieved[i], flat_positions_retrieved[i + 1]});
-  }
+  // std::vector<double> flat_positions_retrieved;
+  // if (!get_node()->get_parameter("positions", flat_positions_retrieved))
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'positions'");
+  //   return false;
+  // }
+  // // attention: reconstruct to std::vector<std::vector<double>>
+  // std::vector<std::vector<double>> positions;
+  // for (size_t i = 0; i < flat_positions_retrieved.size(); i += 2)
+  // {
+  //   positions.push_back({flat_positions_retrieved[i], flat_positions_retrieved[i + 1]});
+  // }
 
-  if (positions.empty())
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'positions' is an empty list");
-    return false;
-  }
+  // if (positions.empty())
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'positions' is an empty list");
+  //   return false;
+  // }
 
-  if (positions.size() != wheel_names.size())
-  {
-    RCLCPP_ERROR_STREAM(
-      get_node()->get_logger(), "Size of 'positions' does not match the number of wheels");
-    return false;
-  }
+  // if (positions.size() != wheel_names.size())
+  // {
+  //   RCLCPP_ERROR_STREAM(
+  //     get_node()->get_logger(), "Size of 'positions' does not match the number of wheels");
+  //   return false;
+  // }
 
-  for (size_t i = 0; i < positions.size(); ++i)
-  {
-    if (positions[i].size() != 2)
-    {
-      RCLCPP_ERROR_STREAM(
-        get_node()->get_logger(), "Position at index " << i << " does not have exactly 2 elements");
-      return false;
-    }
+  // for (size_t i = 0; i < positions.size(); ++i)
+  // {
+  //   if (positions[i].size() != 2)
+  //   {
+  //     RCLCPP_ERROR_STREAM(
+  //       get_node()->get_logger(), "Position at index " << i << " does not have exactly 2 elements");
+  //     return false;
+  //   }
 
-    std::array<double, 2> position = {positions[i][0], positions[i][1]};
-    wheels_[i].set_position(position);
-  }
+  //   std::array<double, 2> position = {positions[i][0], positions[i][1]};
+  //   wheels_[i].set_position(position);
+  // }
 
   // note: Changed to ROS2 parameter server
   // Retrieve the limitless flags
-  std::vector<bool> limitless;
-  if (!get_node()->get_parameter("limitless", limitless))
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'limitless'");
-    return false;
-  }
+  std::vector<bool> limitless = params_.wheel_limits.limitless;
 
   if (limitless.empty())
   {
     RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'limitless' is an empty list");
+    return false;
+  }
+  if (limitless.size() != wheel_names.size())
+  {
+    RCLCPP_ERROR_STREAM(
+      get_node()->get_logger(), "Size of 'limitless' does not match the number of wheels");
     return false;
   }
 
@@ -534,78 +697,97 @@ bool SwerveSteeringController::getWheelParams(
   {
     wheels_[i].set_limitless(limitless[i]);
   }
+  
+  // get limits:
+  std::vector<double> max_rot_angle = params_.wheel_limits.max_rot_angle;
+  std::vector<double> min_rot_angle = params_.wheel_limits.min_rot_angle;
 
-  // note: Changed to ROS2 parameter server
-  // Retrieve the limits
+  if (max_rot_angle.size() != wheel_names.size() || min_rot_angle.size() != wheel_names.size())
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "Max and min rotation angles are not of the same size as the number of wheels");
+    return false;
+  }
+
+  for (size_t i = 0; i < wheels_.size(); ++i)
+  {
+    wheels_[i].set_rotation_limits({min_rot_angle[i], max_rot_angle[i]});
+  }
+
+
+  // // note: Changed to ROS2 parameter server
+  // // Retrieve the limits
+  // // std::vector<std::vector<double>> limits;
+  // // attention: attempting to retrieve as flat and then reconstructing to
+  // // std::vector<std::vector<double>>.
+  // std::vector<double> flat_limits_retrieved;
+  // if (!get_node()->get_parameter("limits", flat_limits_retrieved))
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'limits'");
+  //   return false;
+  // }
+  // // attention: reconstruct to std::vector<std::vector<double>>
   // std::vector<std::vector<double>> limits;
-  // attention: attempting to retrieve as flat and then reconstructing to
-  // std::vector<std::vector<double>>.
-  std::vector<double> flat_limits_retrieved;
-  if (!get_node()->get_parameter("limits", flat_limits_retrieved))
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'limits'");
-    return false;
-  }
-  // attention: reconstruct to std::vector<std::vector<double>>
-  std::vector<std::vector<double>> limits;
-  for (size_t i = 0; i < flat_limits_retrieved.size(); i += 2)
-  {
-    limits.push_back({flat_limits_retrieved[i], flat_limits_retrieved[i + 1]});
-  }
+  // for (size_t i = 0; i < flat_limits_retrieved.size(); i += 2)
+  // {
+  //   limits.push_back({flat_limits_retrieved[i], flat_limits_retrieved[i + 1]});
+  // }
 
-  if (limits.empty())
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'limits' is an empty list");
-    return false;
-  }
+  // if (limits.empty())
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'limits' is an empty list");
+  //   return false;
+  // }
 
-  if (limits.size() != wheel_names.size())
-  {
-    RCLCPP_ERROR_STREAM(
-      get_node()->get_logger(), "Size of 'limits' does not match the number of wheels");
-    return false;
-  }
+  // if (limits.size() != wheel_names.size())
+  // {
+  //   RCLCPP_ERROR_STREAM(
+  //     get_node()->get_logger(), "Size of 'limits' does not match the number of wheels");
+  //   return false;
+  // }
 
-  for (size_t i = 0; i < limits.size(); ++i)
-  {
-    // Skip setting limits if the wheel is limitless
-    if (wheels_[i].get_limitless())
-    {
-      RCLCPP_INFO_STREAM(
-        get_node()->get_logger(), "Skipping limits for wheel " << i << " as it is limitless");
-      continue;
-    }
+  // for (size_t i = 0; i < limits.size(); ++i)
+  // {
+  //   // Skip setting limits if the wheel is limitless
+  //   if (wheels_[i].get_limitless())
+  //   {
+  //     RCLCPP_INFO_STREAM(
+  //       get_node()->get_logger(), "Skipping limits for wheel " << i << " as it is limitless");
+  //     continue;
+  //   }
 
-    if (limits[i].size() != 2)
-    {
-      RCLCPP_ERROR_STREAM(
-        get_node()->get_logger(), "Limit at index " << i << " does not have exactly 2 elements");
-      return false;
-    }
+  //   if (limits[i].size() != 2)
+  //   {
+  //     RCLCPP_ERROR_STREAM(
+  //       get_node()->get_logger(), "Limit at index " << i << " does not have exactly 2 elements");
+  //     return false;
+  //   }
 
-    std::array<double, 2> limit = {limits[i][0], limits[i][1]};
-    wheels_[i].set_rotation_limits(limit);
-  }
+  //   std::array<double, 2> limit = {limits[i][0], limits[i][1]};
+  //   wheels_[i].set_rotation_limits(limit);
+  // }
 
   // note: Changed to ROS2 parameter server
   // Retrieve the offsets
-  std::vector<double> offsets;
-  if (!get_node()->get_parameter("offsets", offsets))
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'offsets'");
-    return false;
-  }
+  // note:: currently not used, but maybe we should go back to using it.
+  // std::vector<double> offsets;
+  // if (!get_node()->get_parameter("offsets", offsets))
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Couldn't retrieve parameter 'offsets'");
+  //   return false;
+  // }
 
-  if (offsets.empty())
-  {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'offsets' is an empty list");
-    return false;
-  }
+  // if (offsets.empty())
+  // {
+  //   RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Parameter 'offsets' is an empty list");
+  //   return false;
+  // }
 
-  for (size_t i = 0; i < offsets.size(); ++i)
-  {
-    wheels_[i].offset = offsets[i];
-  }
+  // for (size_t i = 0; i < offsets.size(); ++i)
+  // {
+  //   wheels_[i].offset = offsets[i];
+  // }
 
   return true;
 }
@@ -702,27 +884,23 @@ void SwerveSteeringController::setOdomPubFields()
       avg_intersection_publisher_standard));  // to show the avg intersection
 
   // note: changed to ROS2 parameter server
-  std::vector<double> pose_cov_list;
-  if (!get_node()->get_parameter("pose_covariance_diagonal", pose_cov_list))
-  {
-    RCLCPP_ERROR(LOGGER, "Couldn't retrieve pose_covariance_diagonal parameter");
-  }
+  std::vector<double> pose_cov_list = params_.pose_covariance_diagonal;
   BOOST_ASSERT(pose_cov_list.size() == 6);
 
   // note: changed to ROS2 parameter server
-  std::vector<double> twist_cov_list;
-  if (!get_node()->get_parameter("twist_covariance_diagonal", twist_cov_list))
-  {
-    RCLCPP_ERROR(LOGGER, "Couldn't retrieve twist_covariance_diagonal parameter");
-  }
+  std::vector<double> twist_cov_list = params_.twist_covariance_diagonal;
+  BOOST_ASSERT(twist_cov_list.size() == 6);
 
   // Setup odometry realtime publisher + odom message constant fields
-  auto odom_publisher_standard = get_node()->create_publisher<nav_msgs::msg::Odometry>("odom", 100);
-  odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>(odom_publisher_standard));
-  odom_publisher_->msg_.header.frame_id = odom_frame_id_;
-  odom_publisher_->msg_.child_frame_id = base_frame_id_;
-  odom_publisher_->msg_.pose.pose.position.z = 0;
+  odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>(
+    DEFAULT_ODOMETRY_TOPIC, rclcpp::SystemDefaultsQoS());
+  realtime_odometry_publisher_ =
+    std::make_shared<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>(
+      odometry_publisher_);
+  
+  realtime_odometry_publisher_->msg_.header.frame_id = odom_frame_id_;
+  realtime_odometry_publisher_->msg_.child_frame_id = base_frame_id_;
+  realtime_odometry_publisher_->msg_.pose.pose.position.z = 0;
   std::array<double, 36> temp_pose_cov_array = {
     {static_cast<double>(pose_cov_list[0]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(pose_cov_list[1]), 0., 0., 0., 0., 0., 0.,
@@ -730,11 +908,11 @@ void SwerveSteeringController::setOdomPubFields()
      static_cast<double>(pose_cov_list[3]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(pose_cov_list[4]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(pose_cov_list[5])}};
-  odom_publisher_->msg_.pose.covariance = temp_pose_cov_array;
-  odom_publisher_->msg_.twist.twist.linear.y = 0;
-  odom_publisher_->msg_.twist.twist.linear.z = 0;
-  odom_publisher_->msg_.twist.twist.angular.x = 0;
-  odom_publisher_->msg_.twist.twist.angular.y = 0;
+  realtime_odometry_publisher_->msg_.pose.covariance = temp_pose_cov_array;
+  realtime_odometry_publisher_->msg_.twist.twist.linear.y = 0;
+  realtime_odometry_publisher_->msg_.twist.twist.linear.z = 0;
+  realtime_odometry_publisher_->msg_.twist.twist.angular.x = 0;
+  realtime_odometry_publisher_->msg_.twist.twist.angular.y = 0;
   std::array<double, 36> temp_twist_cov_array = {
     {static_cast<double>(twist_cov_list[0]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(twist_cov_list[1]), 0., 0., 0., 0., 0., 0.,
@@ -742,16 +920,103 @@ void SwerveSteeringController::setOdomPubFields()
      static_cast<double>(twist_cov_list[3]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(twist_cov_list[4]), 0., 0., 0., 0., 0., 0.,
      static_cast<double>(twist_cov_list[5])}};
-  odom_publisher_->msg_.twist.covariance = temp_twist_cov_array;
+  realtime_odometry_publisher_->msg_.twist.covariance = temp_twist_cov_array;
 
-  auto tf_odom_publisher_standard =
-    get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", 100);
-  tf_odom_publisher_.reset(
-    new realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>(tf_odom_publisher_standard));
-  tf_odom_publisher_->msg_.transforms.resize(1);
-  tf_odom_publisher_->msg_.transforms[0].transform.translation.z = 0.0;
-  tf_odom_publisher_->msg_.transforms[0].child_frame_id = base_frame_id_;
-  tf_odom_publisher_->msg_.transforms[0].header.frame_id = odom_frame_id_;
+  auto tf_odom_publisher_ =get_node()->create_publisher<tf2_msgs::msg::TFMessage>(
+    DEFAULT_TRANSFORM_TOPIC, rclcpp::SystemDefaultsQoS());
+  realtime_tf_odom_publisher_ = std::make_shared<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>(
+      tf_odom_publisher_);
+  realtime_tf_odom_publisher_->msg_.transforms.resize(1);
+  realtime_tf_odom_publisher_->msg_.transforms[0].transform.translation.z = 0.0;
+  realtime_tf_odom_publisher_->msg_.transforms[0].child_frame_id = base_frame_id_;
+  realtime_tf_odom_publisher_->msg_.transforms[0].header.frame_id = odom_frame_id_;
+}
+
+controller_interface::CallbackReturn SwerveSteeringController::setWheelHandles()
+{
+  auto logger = get_node()->get_logger();
+  std::vector<std::string> wheel_names = params_.wheel_names;
+
+  if (wheel_names.empty())
+  {
+    RCLCPP_ERROR(logger, "No '%s' wheel names specified", side.c_str());
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  // register handles
+  wheel_handles_.reserve(wheel_names.size());
+  for (const auto & wheel_name : wheel_names)
+  {
+    const auto interface_name = feedback_type();
+    // find this wheel's state speed interface
+    const auto state_speed_handle = std::find_if(
+      state_interfaces_.cbegin(), state_interfaces_.cend(),
+      [&wheel_name, &interface_name](const auto & interface)
+      {
+        return interface.get_prefix_name() == wheel_name &&
+               interface.get_interface_name() == HW_IF_VELOCITY;
+      });
+
+    if (state_speed_handle == state_interfaces_.cend())
+    {
+      RCLCPP_ERROR(logger, "Unable to obtain joint state handle for %s", wheel_name.c_str());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+
+    // find this wheel's state rotation interface
+    const auto state_rotation_handle = std::find_if(
+      state_interfaces_.cbegin(), state_interfaces_.cend(),
+      [&wheel_name](const auto & interface)
+      {
+        return interface.get_prefix_name() == wheel_name &&
+               interface.get_interface_name() == HW_IF_POSITION;
+      });
+
+    if (state_rotation_handle == state_interfaces_.cend())
+    {
+      RCLCPP_ERROR(logger, "Unable to obtain joint state handle for %s", wheel_name.c_str());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+
+    // find this wheel's command speed interface
+    const auto command_speed_handle = std::find_if(
+      command_interfaces_.begin(), command_interfaces_.end(),
+      [&wheel_name](const auto & interface)
+      {
+        return interface.get_prefix_name() == wheel_name &&
+               interface.get_interface_name() == HW_IF_VELOCITY;
+      });
+
+    if (command_speed_handle == command_interfaces_.end())
+    {
+      RCLCPP_ERROR(logger, "Unable to obtain joint command handle for %s", wheel_name.c_str());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+
+    // find this wheel's command rotation interface
+    const auto command_rotation_handle = std::find_if(
+      command_interfaces_.begin(), command_interfaces_.end(),
+      [&wheel_name](const auto & interface)
+      {
+        return interface.get_prefix_name() == wheel_name &&
+               interface.get_interface_name() == HW_IF_POSITION;
+      });
+
+    if (command_rotation_handle == command_interfaces_.end())
+    {
+      RCLCPP_ERROR(logger, "Unable to obtain joint command handle for %s", wheel_name.c_str());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+
+    wheel_handles_.emplace_back(
+      WheelHandle{std::ref(*state_speed_handle),
+                  std::ref(*state_rotation_handle),
+                  std::ref(*command_speed_handle),
+                  std::ref(*command_rotation_handle)
+                  });
+  }
+
+  return controller_interface::CallbackReturn::SUCCESS;
 }
 
 void SwerveSteeringController::publishWheelData(

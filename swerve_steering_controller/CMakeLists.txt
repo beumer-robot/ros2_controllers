@@ -24,6 +24,10 @@ find_package(realtime_tools REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(urdf REQUIRED)
 
+generate_parameter_library(swerve_steering_controllers_library_parameters
+  src/swerve_steering_controllers_library_parameters.yaml
+)
+
 # Include directories
 include_directories(
   include

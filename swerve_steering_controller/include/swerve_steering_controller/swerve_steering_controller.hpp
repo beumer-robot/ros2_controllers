@@ -51,6 +51,8 @@
 #include "rclcpp_lifecycle/state.hpp"
 // #include <hardware_interface/joint_command_interface.h>
 // #include <hardware_interface/loans.hpp>  // ROS 2 uses a different approach for hardware
+#include "hardware_interface/types/hardware_interface_type_values.hpp"
+
 // interfaces
 #include <realtime_tools/realtime_buffer.h>
 #include <realtime_tools/realtime_publisher.h>
@@ -65,7 +67,8 @@
 #include <swerve_steering_controller/speed_limiter.hpp>
 #include <swerve_steering_controller/utils.hpp>
 #include <swerve_steering_controller/wheel.hpp>
-// #include "swerve_steering_controller_parameters.hpp"
+#include "swerve_steering_controller_parameters.hpp"
+
 
 namespace swerve_steering_controller
 {
@@ -144,15 +147,27 @@ private:
   std::string base_frame_id_;
   std::string odom_frame_id_;
 
-  rclcpp::Duration publish_period_;
-  rclcpp::Time last_state_publish_time_;
+  double publish_rate_ = 50.0;
+  rclcpp::Duration publish_period_ = rclcpp::Duration::from_nanoseconds(0);
+  rclcpp::Time last_state_publish_time_{0, 0, RCL_CLOCK_UNINITIALIZED};
 
-  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odom_publisher_ =
+  // Timeout to consider cmd_vel commands old
+  std::chrono::milliseconds cmd_vel_timeout_{500};
+  std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> odometry_publisher_ = nullptr;
+    std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>
+    realtime_odometry_publisher_ = nullptr;
+  
+  std::shared_ptr<rclcpp::Publisher<tf2_msgs::msg::TFMessage>> tf_odom_publisher_ =
     nullptr;
-  std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>> tf_odom_publisher_ =
-    nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<tf2_msgs::msg::TFMessage>>
+    realtime_tf_odom_publisher_ = nullptr;
+  
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Point>>
     avg_intersection_publisher_ = nullptr;
+  
+
+
+
 
   Odometry odometry_;
 
@@ -181,8 +196,20 @@ private:
   size_t wheel_joints_size_;
 
   std::vector<wheel> wheels_;
-  std::vector<hardware_interface::JointHandle> wheels_joints_handles_;
-  std::vector<hardware_interface::JointHandle> holders_joints_handles_;
+  struct WheelHandle
+  {
+    /* A wheel contains two motors, one for speed, one for rotation */
+    std::reference_wrapper<const hardware_interface::LoanedStateInterface> speed_state;
+    std::reference_wrapper<const hardware_interface::LoanedStateInterface> rotation_state;
+    
+    std::reference_wrapper<hardware_interface::LoanedCommandInterface> speed_command;
+    std::reference_wrapper<hardware_interface::LoanedCommandInterface> rotation_command;
+  };
+  std::vector<WheelHandle> wheel_handles_;
+  CallbackReturn setWheelHandles();
+  
+  // std::vector<hardware_interface::JointHandle> wheels_joints_handles_;
+  // std::vector<hardware_interface::JointHandle> holders_joints_handles_;
 
   utils::command cmd_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_subscriber_;
@@ -191,13 +218,22 @@ private:
   std::shared_ptr<
     realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>>
     controller_state_pub_;
+  
+  std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> realtime_odometry_publisher_ = nullptr;
 
   void cmd_callback(const geometry_msgs::msg::Twist & command);
 
-  bool getWheelParams(
-    const std::string & wheel_param, const std::string & holder_param,
-    std::vector<std::string> & wheel_names, std::vector<std::string> & holder_names);
+  bool getWheelParams();
   bool getXmlStringList(const std::string & list_param, std::vector<std::string> & returned_names);
+
+    // Parameters from ROS for diff_drive_controller
+  std::shared_ptr<ParamListener> param_listener_;
+  Params params_;
+
+  bool publish_limited_velocity_ = false;
+  std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::Twist>> limited_velocity_publisher_ = nullptr;
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::Twist>> realtime_limited_velocity_publisher_ =
+    nullptr;
 
   void setOdomPubFields();
 
@@ -205,6 +241,8 @@ private:
   std::shared_ptr<
     realtime_tools::RealtimePublisher<control_msgs::msg::JointTrajectoryControllerState>>
     controller_state_publisher;
+
+  
 
   void set_to_initial_state();
 
